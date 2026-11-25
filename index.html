@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Spots">
+<meta name="theme-color" content="#16313a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Spots</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap">
+<style>
+/*
+VOICE: ruhig und persönlich, wie ein eigenes Notizbuch voller Lieblingsorte
+IDEA: eine Landkarte ganz ohne Beschriftung, auf die man Fotos pinnt
+PICTURE: die randlose Karte selbst, Fotopins als runde Stecknadeln mit weißem Rand
+COLOUR/TYPE: Kartengrund, Koralle als einziger Akzent, Sterne in Gold; DM Sans
+LAYOUT: Vollbildkarte, schwebende Knöpfe unten rechts, alles andere in Bottom-Sheets
+*/
+:root{--bg:#fff;--ink:#16191d;--mut:#6b7280;--line:#e6e7ea;--chip:rgba(255,255,255,.93);--acc:#f2542d;--gold:#f5b301;--field:#f2f3f5;--sh:0 6px 24px rgba(0,0,0,.18)}
+@media (prefers-color-scheme:dark){:root{--bg:#1b1d21;--ink:#f2f3f5;--mut:#9aa0a8;--line:#30333a;--chip:rgba(32,34,38,.92);--field:#272a30}}
+*{box-sizing:border-box;min-width:0;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;background:#e9e5dc}
+body{font:16px/1.5 'DM Sans',system-ui,-apple-system,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer}
+#map{position:fixed;inset:0;background:#e9e5dc}
+body[data-mapstyle=dunkel] #map{background:#1c1c1c}
+body[data-mapstyle=hell] #map{background:#f5f3f0}
+svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+.top{position:fixed;top:calc(env(safe-area-inset-top) + 10px);left:12px;right:12px;display:flex;gap:8px;justify-content:space-between;z-index:500;pointer-events:none}
+.top>*{pointer-events:auto}
+.chip{background:var(--chip);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-radius:999px;box-shadow:var(--sh);height:44px;padding:0 16px;display:flex;align-items:center;gap:9px;border:0;font-weight:700;white-space:nowrap}
+.chip.ic{width:44px;padding:0;justify-content:center}
+.dot{width:9px;height:9px;border-radius:50%;background:#9aa0a8}.dot.ok{background:#22c55e}.dot.off{background:#f59e0b}.dot.err{background:#ef4444}
+.fabs{position:fixed;right:14px;bottom:calc(env(safe-area-inset-bottom) + 18px);display:flex;flex-direction:column;gap:10px;z-index:500;align-items:center}
+.fab{width:48px;height:48px;border-radius:50%;border:0;background:var(--chip);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);box-shadow:var(--sh);display:grid;place-items:center}
+.fab.main{width:64px;height:64px;background:var(--acc);color:#fff}
+.fab.main svg{width:28px;height:28px;stroke-width:2.4}
+.leaflet-control-attribution{font:10px/1.4 'DM Sans',sans-serif!important;background:rgba(255,255,255,.6)!important;border-radius:6px 0 0 0}
+.leaflet-bottom.leaflet-left{margin-bottom:env(safe-area-inset-bottom)}
+
+.pin{background:none;border:0}
+.pin-b{position:relative;width:48px;height:48px;border-radius:50%;background:var(--acc);border:3px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,.35);display:grid;place-items:center;color:#fff;font-weight:700;font-size:16px}
+.pin-b img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block}
+.pin-b::after{content:'';position:absolute;left:50%;top:100%;margin-top:-1px;transform:translateX(-50%);border-left:7px solid transparent;border-right:7px solid transparent;border-top:10px solid #fff}
+.me{width:18px;height:18px;border-radius:50%;background:#2f80ff;border:3px solid #fff;box-shadow:0 0 0 6px rgba(47,128,255,.22)}
+
+#cross{position:fixed;left:50%;top:50%;width:48px;height:58px;margin:-58px 0 0 -24px;z-index:600;pointer-events:none;display:none}
+#placeHint{position:fixed;top:calc(env(safe-area-inset-top) + 10px);left:50%;transform:translateX(-50%);z-index:600;display:none;font-weight:500}
+#placeBar{position:fixed;left:14px;right:14px;bottom:calc(env(safe-area-inset-bottom) + 18px);z-index:600;display:none;gap:10px;max-width:520px;margin:0 auto}
+#placeBar .btn{flex:1;box-shadow:var(--sh)}
+body.placing #cross,body.placing #placeHint{display:block}
+body.placing #placeBar{display:flex}
+body.placing .fabs,body.placing .top{display:none}
+
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.28);opacity:0;pointer-events:none;transition:opacity .2s;z-index:900}
+.scrim.on{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:1000;background:var(--bg);border-radius:22px 22px 0 0;box-shadow:0 -10px 40px rgba(0,0,0,.22);max-height:88vh;max-height:88dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:8px 20px calc(env(safe-area-inset-bottom) + 22px);transform:translateY(105%);transition:transform .28s cubic-bezier(.2,.8,.2,1);max-width:560px;margin:0 auto}
+.sheet.on{transform:none}
+@media (prefers-reduced-motion:reduce){.sheet,.scrim{transition:none}}
+.grab{width:40px;height:5px;border-radius:3px;background:var(--line);margin:2px auto 8px}
+.x{position:absolute;right:10px;top:8px;width:44px;height:44px;border:0;background:none;display:grid;place-items:center;color:var(--mut)}
+h2{font-size:24px;line-height:1.1;margin:6px 48px 16px 0;text-wrap:balance}
+h3{font-size:16px;margin:22px 0 8px}
+.mut{color:var(--mut)}.small{font-size:14px}
+p{margin:0 0 10px}
+
+.btn{min-height:48px;border-radius:14px;border:0;padding:0 18px;font-weight:700;background:var(--field);display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn.primary{background:var(--acc);color:#fff}
+.btn.danger{color:#e5484d}
+.btn.wide{width:100%;margin-top:8px}
+.btn:focus-visible,.fab:focus-visible,.chip:focus-visible,.choice:focus-visible,.item:focus-visible,.st:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.row-btns{display:flex;gap:10px;margin-top:18px}.row-btns .btn{flex:1}
+.linkbtn{border:0;background:none;color:var(--acc);font-weight:700;padding:10px 0;min-height:44px}
+
+.form label{display:block;font-size:14px;font-weight:500;color:var(--mut);margin-bottom:12px}
+input,textarea{display:block;width:100%;margin-top:6px;font:inherit;font-size:16px;color:var(--ink);background:var(--field);border:1.5px solid transparent;border-radius:12px;padding:12px 14px;outline:none;-webkit-appearance:none;appearance:none}
+textarea{resize:vertical;min-height:84px}
+input:focus,textarea:focus{border-color:var(--acc)}
+.addrrow{display:flex;gap:8px;align-items:flex-end}.addrrow label{flex:1;margin:0}
+.addrrow .btn{width:48px;padding:0;flex:none;margin-bottom:0}
+.photo{display:flex!important;align-items:center;gap:16px;margin-bottom:16px!important}
+.photo .t{font-weight:700;color:var(--acc);font-size:16px}
+.photo input{display:none}
+
+.av{width:84px;height:84px;border-radius:50%;flex:none;background:var(--acc);color:#fff;display:grid;place-items:center;font-weight:700;font-size:28px;overflow:hidden;border:3px solid var(--bg);box-shadow:0 4px 14px rgba(0,0,0,.18)}
+.av img{width:100%;height:100%;object-fit:cover;display:block}
+.av.s{width:46px;height:46px;font-size:16px;border-width:2px}
+.av.ph{background:var(--field);color:var(--mut);box-shadow:none;border:2px dashed var(--line)}
+
+.stars{display:inline-flex;gap:1px;flex:none}
+.st{width:24px;height:24px;padding:0;border:0;background:none;color:var(--line);display:inline-grid;place-items:center}
+.st svg{width:100%;height:100%;fill:currentColor}
+.st.on{color:var(--gold)}
+.form .st{width:42px;height:42px;padding:5px}
+.rate{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--line)}
+.rate>span:first-child{font-weight:500}
+.rate .n{font-variant-numeric:tabular-nums;color:var(--mut);width:2.2em;text-align:right;white-space:nowrap}
+.rate .r{display:flex;align-items:center;gap:6px}
+
+.head{display:flex;gap:16px;align-items:center;margin:6px 44px 4px 0}
+.head h2{margin:0 0 2px}
+.addr{color:var(--mut);margin:0;font-size:15px}
+.score{display:flex;align-items:center;gap:14px;margin:18px 0 10px;padding:14px 16px;border-radius:16px;background:var(--field)}
+.score b{font-size:44px;line-height:1;font-variant-numeric:tabular-nums}
+.score .st{width:28px;height:28px}
+.score small{display:block;color:var(--mut);font-size:14px}
+.desc{white-space:pre-wrap;overflow-wrap:anywhere;margin:14px 0}
+.ext{display:inline-flex;align-items:center;gap:6px;color:var(--acc);font-weight:700;text-decoration:none;min-height:44px}
+
+.choice{display:flex;align-items:center;gap:14px;width:100%;padding:14px;border:0;border-radius:16px;background:var(--field);margin-bottom:10px;text-align:left;font-weight:700}
+.choice small{display:block;color:var(--mut);font-weight:400;font-size:14px}
+.choice .c{width:44px;height:44px;border-radius:50%;background:var(--acc);color:#fff;display:grid;place-items:center;flex:none}
+.searchrow{display:flex;gap:8px;align-items:center}.searchrow input{margin:0}.searchrow .btn{flex:none}
+.item{display:flex;gap:12px;align-items:center;width:100%;text-align:left;background:none;border:0;border-top:1px solid var(--line);padding:10px 0;min-height:56px}
+.item .t{flex:1}.item .t b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.item .t small{color:var(--mut);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .st{width:15px;height:15px}
+.empty{color:var(--mut);padding:18px 0;text-align:center}
+.seg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.seg .btn{padding:0 8px}
+
+#toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 64px);transform:translate(-50%,-10px);background:#16191d;color:#fff;padding:10px 16px;border-radius:12px;font-size:15px;z-index:3000;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;max-width:calc(100vw - 32px);text-align:center}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+
+#setup{position:fixed;inset:0;z-index:2000;background:var(--bg);overflow-y:auto;padding:calc(env(safe-area-inset-top) + 24px) 22px calc(env(safe-area-inset-bottom) + 28px);display:none}
+body.needs-setup #setup{display:block}
+#setup .wrap{max-width:520px;margin:0 auto}
+#setup h1{font-size:44px;line-height:1.05;margin:10px 0 8px}
+#setup .art{display:block;width:100%;height:auto;border-radius:22px;margin-bottom:18px}
+#setup ol{padding-left:20px;margin:6px 0 14px;color:var(--mut)}
+#setup textarea{min-height:140px;font-size:14px;font-family:ui-monospace,Menlo,monospace}
+.err{color:#e5484d;font-weight:500;min-height:1.5em;margin-top:10px}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="top">
+  <button class="chip" data-act="list" aria-label="Alle Spots anzeigen"><span class="dot" id="dot"></span><span id="stxt">Spots</span></button>
+  <button class="chip ic" data-act="settings" aria-label="Einstellungen" data-ic="gear"></button>
+</div>
+<div class="fabs">
+  <button class="fab" data-act="fit" aria-label="Alle Spots zeigen" data-ic="fit"></button>
+  <button class="fab" data-act="me" aria-label="Mein Standort" data-ic="loc"></button>
+  <button class="fab main" data-act="add" aria-label="Spot hinzufügen" data-ic="plus"></button>
+</div>
+
+<svg id="cross" viewBox="0 0 48 58" aria-hidden="true"><path d="M24 57 16 44h16z" fill="#fff"/><circle cx="24" cy="24" r="21" fill="#f2542d" stroke="#fff" stroke-width="3"/><circle cx="24" cy="24" r="5" fill="#fff"/></svg>
+<div id="placeHint" class="chip">Karte verschieben, bis die Nadel sitzt</div>
+<div id="placeBar"><button class="btn" data-act="place-cancel">Abbrechen</button><button class="btn primary" data-act="place-ok">Hier setzen</button></div>
+
+<div class="scrim" id="scrim" data-act="close"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Details">
+  <div class="grab"></div>
+  <button class="x" data-act="close" aria-label="Schließen" data-ic="x"></button>
+  <div id="sb"></div>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<div id="setup">
+  <form class="wrap form" id="setupForm">
+    <svg class="art" viewBox="0 0 520 220" aria-hidden="true">
+      <rect width="520" height="220" fill="#16313a"/>
+      <g fill="none" stroke="#2c5560" stroke-width="2">
+        <path d="M-10 60C80 30 140 90 230 70S400 10 530 50"/><path d="M-10 110C90 80 160 140 260 118S420 70 530 104"/>
+        <path d="M-10 160C70 140 170 190 270 168S430 130 530 158"/><path d="M-10 205C100 180 190 230 300 210S440 185 530 200"/>
+      </g>
+      <g transform="translate(150 54)"><path d="M24 57 16 44h16z" fill="#fff"/><circle cx="24" cy="24" r="21" fill="#f5b301" stroke="#fff" stroke-width="3"/></g>
+      <g transform="translate(340 96)"><path d="M24 57 16 44h16z" fill="#fff"/><circle cx="24" cy="24" r="21" fill="#7cc4b8" stroke="#fff" stroke-width="3"/></g>
+      <g transform="translate(232 70) scale(1.5)"><path d="M24 57 16 44h16z" fill="#fff"/><circle cx="24" cy="24" r="21" fill="#f2542d" stroke="#fff" stroke-width="3"/><circle cx="24" cy="24" r="6" fill="#fff"/></g>
+    </svg>
+    <h1>Spots</h1>
+    <p class="mut">Eure eigene Karte ohne Beschriftung – mit Fotopins, Beschreibung und Bewertungen, live geteilt zwischen zwei Handys.</p>
+    <h3>Einmalig verbinden</h3>
+    <ol>
+      <li><b>Erstes Handy:</b> die <code>firebaseConfig</code> aus der Firebase-Konsole einfügen.</li>
+      <li><b>Weitere Handys:</b> den Zugangsschlüssel (beginnt mit <code>SPOTS1.</code>) einfügen, den das erste Handy unter Einstellungen teilt.</li>
+    </ol>
+    <label>Konfiguration oder Zugangsschlüssel
+      <textarea id="setupIn" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="const firebaseConfig = { apiKey: &quot;…&quot;, … }"></textarea>
+    </label>
+    <button class="btn primary wide" type="submit">Weiter</button>
+    <p class="err" id="setupErr"></p>
+  </form>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"></script>
+<script type="module">
+{
+const FB_VER = '10.12.2';
+const ATTR = '<a href="https://openfreemap.org">OpenFreeMap</a> © <a href="https://www.openmaptiles.org/">OpenMapTiles</a> Daten von <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+const OFM = 'https://tiles.openfreemap.org/styles/';
+const STYLES = { farbig: { name: 'Farbig', ofm: 'liberty' }, hell: { name: 'Hell', ofm: 'positron' }, dunkel: { name: 'Dunkel', ofm: 'dark' } };
+const FALLBACK = { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', attr: 'Tiles © Esri' };
+const styleCache = {};
+let styleReq = 0;
+const CATS = [['g', 'Gesamt'], ['a', 'Ambiente'], ['u', 'Ungestört']];
+const IC = {
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  loc: '<circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
+  gear: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
+  fit: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
+  map: '<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/>',
+  refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/>',
+  ext: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>'
+};
+const STAR = '<svg viewBox="0 0 24 24"><path d="M12 2.8l2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.2l-5.7 3.1 1.2-6.4-4.7-4.4 6.4-.8z"/></svg>';
+
+const $ = s => document.querySelector(s);
+const ico = k => `<svg class="i" viewBox="0 0 24 24">${IC[k]}</svg>`;
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  del(k) { try { localStorage.removeItem(k); } catch {} }
+};
+const okPhoto = s => typeof s === 'string' && s.length < 400000 && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(s);
+const initials = n => (String(n || '').trim().split(/\s+/).map(w => w[0] || '').join('').slice(0, 2) || '?').toUpperCase();
+const clampR = v => Math.max(0, Math.min(5, Math.round(Number(v) || 0)));
+const finite = v => typeof v === 'number' && isFinite(v);
+
+let map, tiles, meMarker = null, fs = null, cfgNow = null;
+let mode = '', openId = null, draft = null, placing = null, results = [], firstSnap = true;
+const pins = new Map(), markers = new Map();
+const hadView = LS.get('spots.view', null) !== null;
+
+/* ---------- UI helpers ---------- */
+let toastT;
+function toast(msg, ms = 2600) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('on');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), ms);
+}
+function setStatus(txt, state) {
+  $('#stxt').textContent = txt;
+  $('#dot').className = 'dot' + (state ? ' ' + state : '');
+}
+function open(html, m) {
+  mode = m; $('#sb').innerHTML = html;
+  $('#sheet').classList.add('on'); $('#scrim').classList.add('on');
+  $('#sheet').scrollTop = 0;
+}
+function closeSheet() {
+  mode = ''; openId = null; draft = null;
+  $('#sheet').classList.remove('on'); $('#scrim').classList.remove('on');
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+}
+function stars(key, val, editable) {
+  let h = '';
+  for (let i = 1; i <= 5; i++) {
+    const on = i <= val ? ' on' : '';
+    h += editable
+      ? `<button type="button" class="st${on}" data-star="${key}" data-v="${i}" aria-label="${i} von 5">${STAR}</button>`
+      : `<span class="st${on}">${STAR}</span>`;
+  }
+  return `<span class="stars" data-for="${key}" role="img" aria-label="${val} von 5 Sternen">${h}</span>`;
+}
+function avatar(p, cls = '') {
+  if (okPhoto(p.photo)) return `<span class="av ${cls}"><img src="${p.photo}" alt=""></span>`;
+  return `<span class="av ${cls}">${esc(initials(p.name))}</span>`;
+}
+function fmtDate(ts) {
+  try { const d = ts && ts.toDate ? ts.toDate() : null; return d ? d.toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric' }) : ''; } catch { return ''; }
+}
+
+/* ---------- Map ---------- */
+function initMap() {
+  const v = LS.get('spots.view', { c: [51.1, 10.4], z: 6 });
+  map = L.map('map', { zoomControl: false, attributionControl: false, worldCopyJump: true }).setView(v.c, v.z);
+  L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(map);
+  setStyle(LS.get('spots.style', 'farbig'));
+  map.on('moveend', () => { const c = map.getCenter(); LS.set('spots.view', { c: [c.lat, c.lng], z: map.getZoom() }); });
+}
+async function loadStyle(k) {
+  if (!styleCache[k]) {
+    const r = await fetch(OFM + STYLES[k].ofm);
+    if (!r.ok) throw new Error('Kartenstil nicht erreichbar');
+    const st = await r.json();
+    st.layers = (st.layers || []).filter(l => l.type !== 'symbol'); // alle Beschriftungen & Symbole raus
+    styleCache[k] = JSON.stringify(st);
+  }
+  return JSON.parse(styleCache[k]);
+}
+async function setStyle(k) {
+  if (!STYLES[k]) k = 'farbig';
+  document.body.dataset.mapstyle = k; LS.set('spots.style', k);
+  const req = ++styleReq;
+  let layer = null;
+  try {
+    if (typeof maplibregl === 'undefined' || !L.maplibreGL) throw new Error('kein MapLibre');
+    const st = await loadStyle(k);
+    if (req !== styleReq) return;
+    layer = L.maplibreGL({ style: st, attribution: ATTR, attributionControl: false });
+    if (tiles) map.removeLayer(tiles);
+    tiles = layer.addTo(map);
+  } catch (e) {
+    if (req !== styleReq) return;
+    if (tiles && tiles !== layer) map.removeLayer(tiles);
+    if (layer && map.hasLayer(layer)) map.removeLayer(layer);
+    tiles = L.tileLayer(FALLBACK.url, { maxNativeZoom: 16, maxZoom: 20, attribution: FALLBACK.attr }).addTo(map);
+  }
+}
+function pinIcon(p) {
+  const inner = okPhoto(p.photo) ? `<img src="${p.photo}" alt="">` : esc(initials(p.name));
+  return L.divIcon({ className: 'pin', html: `<div class="pin-b">${inner}</div>`, iconSize: [48, 58], iconAnchor: [24, 58] });
+}
+const sig = p => (p.photo ? p.photo.length + p.photo.slice(-32) : '') + '|' + p.name;
+function upsertMarker(p) {
+  let m = markers.get(p.id);
+  if (!m) {
+    m = L.marker([p.lat, p.lng], { icon: pinIcon(p), title: p.name }).addTo(map);
+    m.on('click', () => showProfile(m._pid));
+    m._pid = p.id; markers.set(p.id, m);
+  } else {
+    m.setLatLng([p.lat, p.lng]);
+    if (m._sig !== sig(p)) m.setIcon(pinIcon(p));
+  }
+  m._sig = sig(p);
+}
+function fitAll() {
+  if (!pins.size) { toast('Noch keine Spots auf der Karte'); return; }
+  const b = L.latLngBounds([...pins.values()].map(p => [p.lat, p.lng]));
+  map.fitBounds(b, { padding: [70, 70], maxZoom: 16 });
+}
+function panAbove(ll) {
+  const sz = map.getSize(), z = map.getZoom();
+  const pt = map.project(ll, z).add([0, sz.y * 0.25]);
+  map.panTo(map.unproject(pt, z), { animate: true });
+}
+function locate() {
+  return new Promise((res, rej) => {
+    if (!navigator.geolocation) return rej(new Error('Standort ist auf diesem Gerät nicht verfügbar.'));
+    navigator.geolocation.getCurrentPosition(
+      p => res([p.coords.latitude, p.coords.longitude]),
+      e => rej(new Error(e.code === 1 ? 'Standortzugriff verweigert – in Einstellungen › Datenschutz › Ortungsdienste erlauben.' : 'Standort konnte nicht ermittelt werden.')),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 });
+  });
+}
+function showMe(ll) {
+  if (!meMarker) meMarker = L.marker(ll, { icon: L.divIcon({ className: '', html: '<div class="me"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }), interactive: false, zIndexOffset: -100 }).addTo(map);
+  else meMarker.setLatLng(ll);
+}
+
+/* ---------- Geocoding (OpenStreetMap Nominatim) ---------- */
+function fmtAddr(j) {
+  const a = (j && j.address) || {};
+  const street = [a.road || a.pedestrian || a.footway || a.path || a.square || a.cycleway, a.house_number].filter(Boolean).join(' ');
+  const city = [a.postcode, a.city || a.town || a.village || a.municipality || a.suburb || a.county].filter(Boolean).join(' ');
+  const first = street || (j && j.name) || '';
+  return [first, city].filter(Boolean).join(', ') || (j && j.display_name) || '';
+}
+async function reverseGeo(lat, lng) {
+  const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=de`);
+  if (!r.ok) throw new Error('Adressdienst nicht erreichbar');
+  return fmtAddr(await r.json());
+}
+async function searchGeo(q) {
+  let u = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=6&accept-language=de&q=${encodeURIComponent(q)}`;
+  if (map.getZoom() >= 8) { const b = map.getBounds(); u += `&viewbox=${b.getWest()},${b.getNorth()},${b.getEast()},${b.getSouth()}`; }
+  const r = await fetch(u);
+  if (!r.ok) throw new Error('Adressdienst nicht erreichbar');
+  const j = await r.json();
+  return Array.isArray(j) ? j.filter(x => isFinite(+x.lat) && isFinite(+x.lon)) : [];
+}
+
+/* ---------- Sheets ---------- */
+function showAdd() {
+  open(`<h2>Spot hinzufügen</h2>
+    <button class="choice" data-act="add-here"><span class="c">${ico('loc')}</span><span>Mein Standort<small>Position des Handys verwenden</small></span></button>
+    <button class="choice" data-act="add-search"><span class="c">${ico('search')}</span><span>Adresse suchen<small>Straße, Ort, PLZ oder alles zusammen</small></span></button>
+    <button class="choice" data-act="add-pick"><span class="c">${ico('map')}</span><span>Auf der Karte wählen<small>Karte verschieben und Nadel setzen</small></span></button>`, 'add');
+}
+function showSearch() {
+  results = [];
+  open(`<form id="sf" class="form"><h2>Adresse suchen</h2>
+    <div class="searchrow"><input id="sq" type="search" placeholder="z. B. Rheinallee 5, Mainz" enterkeyhint="search" autocomplete="off" aria-label="Adresse"><button class="btn primary" type="submit">Suchen</button></div>
+    <div id="sres" style="margin-top:12px"></div></form>`, 'search');
+  setTimeout(() => $('#sq') && $('#sq').focus(), 300);
+}
+async function doSearch() {
+  const q = ($('#sq').value || '').trim(); const box = $('#sres');
+  if (q.length < 2) return;
+  box.innerHTML = '<p class="empty">Suche läuft…</p>';
+  try {
+    results = await searchGeo(q);
+    box.innerHTML = results.length
+      ? results.map((r, i) => `<button type="button" class="item" data-act="res" data-i="${i}"><span class="t"><b>${esc(fmtAddr(r) || r.display_name)}</b><small>${esc(r.display_name)}</small></span></button>`).join('')
+      : '<p class="empty">Nichts gefunden. Probier es mit Ort oder Postleitzahl.</p>';
+  } catch (e) { box.innerHTML = `<p class="empty">${esc(e.message)}</p>`; }
+}
+function newDraft(lat, lng, address = '') {
+  draft = { name: '', desc: '', address, autoAddr: address, lat, lng, photo: '', r: { g: 0, a: 0, u: 0 } };
+  showForm();
+}
+function showForm() {
+  const d = draft;
+  open(`<form id="pf" class="form"><h2>${d.id ? 'Spot bearbeiten' : 'Neuer Spot'}</h2>
+    <label class="photo"><input type="file" accept="image/*" id="photoIn"><span id="photoPrev">${d.photo ? avatar(d) : '<span class="av ph">+</span>'}</span>
+      <span><span class="t">${d.photo ? 'Foto ändern' : 'Profilbild wählen'}</span><br><span class="small">Wird klein auf der Karte gezeigt</span></span></label>
+    ${d.photo ? '<button type="button" class="linkbtn" data-act="rmphoto" style="margin:-8px 0 8px">Foto entfernen</button>' : ''}
+    <label>Name<input id="fName" maxlength="80" value="${esc(d.name)}" placeholder="z. B. Bank am Rheinufer" autocomplete="off"></label>
+    <label>Beschreibung<textarea id="fDesc" maxlength="1000" placeholder="Was macht diesen Ort aus?">${esc(d.desc)}</textarea></label>
+    <div class="addrrow"><label>Adresse<input id="fAddr" maxlength="200" value="${esc(d.address)}" placeholder="Adresse wird ermittelt…" autocomplete="off"></label>
+      <button type="button" class="btn" data-act="readdr" aria-label="Adresse aus Position neu ermitteln">${ico('refresh')}</button></div>
+    <button type="button" class="linkbtn" data-act="move">Position auf der Karte ändern</button>
+    <h3>Bewertung</h3>
+    ${CATS.map(([k, l]) => `<div class="rate"><span>${l}</span><span class="r">${stars(k, d.r[k], true)}<span class="n" id="n-${k}">${d.r[k]}/5</span></span></div>`).join('')}
+    <p class="small mut" style="margin-top:6px">Auf den gewählten Stern nochmal tippen setzt auf 0.</p>
+    <div class="row-btns"><button type="button" class="btn" data-act="cancel">Abbrechen</button><button type="submit" class="btn primary">Speichern</button></div>
+  </form>`, 'form');
+  if (!d.address) autoAddress();
+}
+function syncDraft() {
+  if (!draft || !$('#pf')) return;
+  draft.name = $('#fName').value.trim();
+  draft.desc = $('#fDesc').value.trim();
+  draft.address = $('#fAddr').value.trim();
+}
+function autoAddress() {
+  const d = draft; if (!d) return;
+  const f = $('#fAddr'); if (f) f.placeholder = 'Adresse wird ermittelt…';
+  reverseGeo(d.lat, d.lng).then(a => {
+    if (draft !== d) return;
+    d.autoAddr = a;
+    const f2 = $('#fAddr');
+    if (f2 && (!f2.value.trim() || f2.dataset.auto === '1')) { f2.value = a; f2.dataset.auto = '1'; }
+    d.address = f2 ? f2.value.trim() : a;
+  }).catch(() => { const f3 = $('#fAddr'); if (f3) f3.placeholder = 'Adresse nicht gefunden – selbst eintragen'; });
+}
+function renderStars(k) {
+  const el = $(`#sb .stars[data-for="${k}"]`); if (!el || !draft) return;
+  el.outerHTML = stars(k, draft.r[k], true);
+  $('#n-' + k).textContent = draft.r[k] + '/5';
+}
+function showProfile(id, keepView) {
+  const p = pins.get(id); if (!p) return;
+  if (!keepView) panAbove([p.lat, p.lng]);
+  const r = p.r || {};
+  const when = fmtDate(p.updatedAt) || fmtDate(p.createdAt);
+  open(`<div class="head">${avatar(p)}<div><h2>${esc(p.name)}</h2><p class="addr">${esc(p.address || 'Keine Adresse')}</p></div></div>
+    <div class="score"><b>${clampR(r.g)}</b><div>${stars('g', clampR(r.g))}<small>Gesamt von 5</small></div></div>
+    ${CATS.slice(1).map(([k, l]) => `<div class="rate"><span>${l}</span><span class="r">${stars(k, clampR(r[k]))}<span class="n">${clampR(r[k])}/5</span></span></div>`).join('')}
+    ${p.desc ? `<p class="desc">${esc(p.desc)}</p>` : '<p class="desc mut">Noch keine Beschreibung.</p>'}
+    <a class="ext" href="https://maps.apple.com/?ll=${p.lat},${p.lng}&q=${encodeURIComponent(p.name)}">${ico('ext')} In Apple Karten öffnen</a>
+    <div class="row-btns"><button class="btn danger" data-act="del">Löschen</button><button class="btn primary" data-act="edit">Bearbeiten</button></div>
+    ${when ? `<p class="small mut" style="margin-top:12px">Zuletzt geändert am ${esc(when)}</p>` : ''}`, 'profile');
+  openId = id;
+}
+function listHtml(arr) {
+  if (!arr.length) return '<p class="empty">Keine Spots gefunden.</p>';
+  return arr.map(p => `<button class="item" data-act="open" data-id="${esc(p.id)}">${avatar(p, 's')}<span class="t"><b>${esc(p.name)}</b><small>${esc(p.address || '')}</small></span>${stars('g', clampR(p.r && p.r.g))}</button>`).join('');
+}
+function sortedPins() {
+  return [...pins.values()].sort((a, b) => clampR(b.r && b.r.g) - clampR(a.r && a.r.g) || String(a.name).localeCompare(String(b.name), 'de'));
+}
+function showList() {
+  const arr = sortedPins();
+  if (!arr.length) {
+    open(`<h2>Noch keine Spots</h2><p class="mut">Tippe auf den Plus-Knopf unten rechts, um euren ersten Ort zu setzen – per Standort, Adresse oder direkt auf der Karte.</p><button class="btn primary wide" data-act="add">Ersten Spot hinzufügen</button>`, 'list');
+    return;
+  }
+  open(`<h2>Alle Spots <span class="mut">${arr.length}</span></h2>
+    ${arr.length > 5 ? '<input id="lq" type="search" placeholder="Filtern nach Name oder Adresse" aria-label="Filtern" style="margin:0 0 8px">' : ''}
+    <div id="lres">${listHtml(arr)}</div>`, 'list');
+}
+function bundleKey() { return cfgNow ? 'SPOTS1.' + btoa(JSON.stringify({ c: cfgNow.c, k: cfgNow.k })) : ''; }
+function showSettings() {
+  const cur = document.body.dataset.mapstyle;
+  open(`<h2>Einstellungen</h2>
+    <h3 style="margin-top:4px">Kartenstil</h3>
+    <div class="seg">${Object.entries(STYLES).map(([k, s]) => `<button class="btn${cur === k ? ' primary' : ''}" data-act="style" data-v="${k}">${s.name}</button>`).join('')}</div>
+    <h3>Weiteres Handy verbinden</h3>
+    <p class="mut small">Öffne die App auf dem anderen Handy (vom Home-Bildschirm aus) und füge dort diesen Schlüssel ein. Wer ihn hat, kann die Karte sehen und bearbeiten – also nur an Vertraute weitergeben.</p>
+    <textarea id="keyOut" readonly rows="3" style="font-size:13px;font-family:ui-monospace,Menlo,monospace">${esc(bundleKey())}</textarea>
+    <div class="row-btns" style="margin-top:10px">
+      <button class="btn" data-act="copykey">Kopieren</button>
+      ${navigator.share ? '<button class="btn primary" data-act="sharekey">Teilen</button>' : ''}
+    </div>
+    <h3>Dieses Gerät</h3>
+    <button class="btn danger wide" data-act="disconnect">Verbindung trennen</button>
+    <p class="small mut" style="margin-top:8px">Trennen löscht keine Spots – nur die Verbindung auf diesem Handy.</p>`, 'settings');
+}
+function confirmBox(title, text, yesLabel, act, id) {
+  open(`<h2>${esc(title)}</h2><p class="mut">${esc(text)}</p>
+    <div class="row-btns"><button class="btn" data-act="${id ? 'back' : 'close'}" ${id ? `data-id="${esc(id)}"` : ''}>Abbrechen</button><button class="btn primary" style="background:#e5484d" data-act="${act}" ${id ? `data-id="${esc(id)}"` : ''}>${esc(yesLabel)}</button></div>`, 'confirm');
+}
+
+/* ---------- Placement mode ---------- */
+function startPlacing(done, cancel, at) {
+  $('#sheet').classList.remove('on'); $('#scrim').classList.remove('on');
+  if (at) map.setView(at, Math.max(map.getZoom(), 16));
+  document.body.classList.add('placing');
+  placing = { done, cancel };
+}
+function endPlacing(ok) {
+  const p = placing; placing = null;
+  document.body.classList.remove('placing');
+  if (!p) return;
+  if (ok) { const c = map.getCenter(); p.done(c.lat, c.lng); } else if (p.cancel) p.cancel();
+}
+
+/* ---------- Photos ---------- */
+async function toThumb(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Bild konnte nicht gelesen werden')); i.src = url; });
+    const S = 320, w = img.naturalWidth, h = img.naturalHeight, s = Math.min(w, h);
+    const c = document.createElement('canvas'); c.width = c.height = S;
+    c.getContext('2d').drawImage(img, (w - s) / 2, (h - s) / 2, s, s, 0, 0, S, S);
+    return c.toDataURL('image/jpeg', 0.82);
+  } finally { URL.revokeObjectURL(url); }
+}
+
+/* ---------- Firebase ---------- */
+const errHint = e => (e && e.code === 'permission-denied') ? 'Keine Berechtigung – Firestore-Regeln prüfen.' : ((e && e.message) || 'Unbekannter Fehler');
+async function connect(cfg) {
+  cfgNow = cfg;
+  setStatus('Verbinde…');
+  try {
+    const base = `https://www.gstatic.com/firebasejs/${FB_VER}/`;
+    const A = await import(base + 'firebase-app.js');
+    const F = await import(base + 'firebase-firestore.js');
+    const app = A.getApps().length ? A.getApp() : A.initializeApp(cfg.c);
+    let db;
+    try { db = F.initializeFirestore(app, { localCache: F.persistentLocalCache() }); } catch { db = F.getFirestore(app); }
+    fs = { F, db, col: F.collection(db, 'karten', cfg.k, 'pins') };
+    F.onSnapshot(fs.col, { includeMetadataChanges: true }, onSnap, err => { setStatus('Fehler', 'err'); toast(errHint(err), 6000); });
+  } catch (e) {
+    setStatus('Offline', 'err');
+    toast('Verbindung fehlgeschlagen: ' + errHint(e), 6000);
+  }
+}
+function onSnap(snap) {
+  const seen = new Set();
+  snap.forEach(d => {
+    const x = d.data() || {};
+    if (!finite(x.lat) || !finite(x.lng)) return;
+    const p = { id: d.id, name: String(x.name || 'Ohne Namen').slice(0, 80), desc: String(x.desc || '').slice(0, 1000), address: String(x.address || '').slice(0, 200), lat: x.lat, lng: x.lng, photo: okPhoto(x.photo) ? x.photo : '', r: x.r || {}, createdAt: x.createdAt, updatedAt: x.updatedAt };
+    seen.add(d.id); pins.set(d.id, p); upsertMarker(p);
+  });
+  for (const id of [...pins.keys()]) if (!seen.has(id)) { pins.delete(id); const m = markers.get(id); if (m) m.remove(); markers.delete(id); }
+  const n = pins.size;
+  setStatus(`${n} ${n === 1 ? 'Spot' : 'Spots'}${snap.metadata.fromCache ? ' · offline' : ''}`, snap.metadata.fromCache ? 'off' : 'ok');
+  if (firstSnap) { firstSnap = false; if (n && !hadView) fitAll(); }
+  if (mode === 'profile' && openId) {
+    if (!pins.has(openId)) { closeSheet(); toast('Dieser Spot wurde gelöscht'); }
+    else if (snap.docChanges({ includeMetadataChanges: false }).some(c => c.doc.id === openId)) { const y = $('#sheet').scrollTop; showProfile(openId, true); $('#sheet').scrollTop = y; }
+  }
+  if (mode === 'list' && !$('#lq')) showList();
+}
+function savePin() {
+  syncDraft();
+  const d = draft;
+  if (!d) return;
+  if (!d.name) { toast('Bitte gib dem Spot einen Namen'); $('#fName').focus(); return; }
+  if (!fs) { toast('Nicht verbunden'); return; }
+  const { F } = fs;
+  const data = { name: d.name, desc: d.desc, address: d.address, lat: d.lat, lng: d.lng, photo: d.photo || '', r: { g: clampR(d.r.g), a: clampR(d.r.a), u: clampR(d.r.u) }, updatedAt: F.serverTimestamp() };
+  let id = d.id, pr;
+  if (id) pr = F.updateDoc(F.doc(fs.col, id), data);
+  else { const ref = F.doc(fs.col); id = ref.id; data.createdAt = F.serverTimestamp(); pr = F.setDoc(ref, data); }
+  pr.catch(e => toast('Speichern fehlgeschlagen: ' + errHint(e), 6000));
+  closeSheet();
+  setTimeout(() => { if (pins.has(id)) showProfile(id); }, 250);
+}
+function deletePin(id) {
+  if (!fs || !id) return;
+  fs.F.deleteDoc(fs.F.doc(fs.col, id)).catch(e => toast('Löschen fehlgeschlagen: ' + errHint(e), 6000));
+  closeSheet(); toast('Spot gelöscht');
+}
+
+/* ---------- Setup ---------- */
+function parseConfig(txt) {
+  const out = {}; let m;
+  const re1 = /([A-Za-z]+)\s*:\s*["']([^"']+)["']/g; while ((m = re1.exec(txt))) out[m[1]] = m[2];
+  const re2 = /"([A-Za-z]+)"\s*:\s*"([^"]+)"/g; while ((m = re2.exec(txt))) out[m[1]] = m[2];
+  if (!out.apiKey || !out.projectId || !out.appId) return null;
+  const c = {}; for (const k of ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId']) if (out[k]) c[k] = out[k];
+  return c;
+}
+function readKey(t) {
+  const m = String(t).match(/SPOTS1\.([A-Za-z0-9+/=]+)/); if (!m) return null;
+  try { const o = JSON.parse(atob(m[1])); return o && o.c && o.c.apiKey && o.c.projectId && typeof o.k === 'string' && /^[a-z0-9]{24,}$/.test(o.k) ? { c: o.c, k: o.k } : null; } catch { return null; }
+}
+function newCode() { const a = new Uint8Array(18); crypto.getRandomValues(a); return Array.from(a, b => b.toString(36).padStart(2, '0')).join(''); }
+function setupGo() {
+  const t = $('#setupIn').value, err = $('#setupErr');
+  let cfg = readKey(t);
+  if (!cfg) { const c = parseConfig(t); if (c) cfg = { c, k: newCode() }; }
+  if (!cfg) { err.textContent = 'Das sieht weder nach einem Zugangsschlüssel (SPOTS1.…) noch nach einer Firebase-Konfiguration aus.'; return; }
+  LS.set('spots.cfg', cfg);
+  document.body.classList.remove('needs-setup');
+  connect(cfg);
+  toast('Verbunden – viel Spaß!');
+}
+
+/* ---------- Events ---------- */
+document.addEventListener('click', e => {
+  const st = e.target.closest('[data-star]');
+  if (st && draft) { const k = st.dataset.star, v = +st.dataset.v; draft.r[k] = draft.r[k] === v ? 0 : v; renderStars(k); return; }
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const a = b.dataset.act;
+  if (a === 'close') closeSheet();
+  else if (a === 'add') showAdd();
+  else if (a === 'add-search') showSearch();
+  else if (a === 'add-here') {
+    toast('Standort wird ermittelt…');
+    locate().then(ll => { showMe(ll); map.setView(ll, 17); newDraft(ll[0], ll[1]); }).catch(er => toast(er.message, 5000));
+  }
+  else if (a === 'add-pick') { closeSheet(); startPlacing((lat, lng) => newDraft(lat, lng)); }
+  else if (a === 'place-ok') endPlacing(true);
+  else if (a === 'place-cancel') endPlacing(false);
+  else if (a === 'res') {
+    const r = results[+b.dataset.i]; if (!r) return;
+    const lat = +r.lat, lng = +r.lon;
+    map.setView([lat, lng], 17); newDraft(lat, lng, fmtAddr(r));
+  }
+  else if (a === 'me') locate().then(ll => { showMe(ll); map.flyTo(ll, Math.max(map.getZoom(), 15)); }).catch(er => toast(er.message, 5000));
+  else if (a === 'fit') fitAll();
+  else if (a === 'list') showList();
+  else if (a === 'open') { const p = pins.get(b.dataset.id); if (p) { map.setView([p.lat, p.lng], Math.max(map.getZoom(), 15)); showProfile(p.id); } }
+  else if (a === 'settings') showSettings();
+  else if (a === 'style') { setStyle(b.dataset.v); showSettings(); }
+  else if (a === 'copykey') {
+    const k = bundleKey();
+    (navigator.clipboard ? navigator.clipboard.writeText(k) : Promise.reject()).then(() => toast('Schlüssel kopiert')).catch(() => { const t = $('#keyOut'); t.focus(); t.select(); toast('Markiert – jetzt kopieren'); });
+  }
+  else if (a === 'sharekey') navigator.share({ title: 'Spots-Zugang', text: bundleKey() }).catch(() => {});
+  else if (a === 'disconnect') confirmBox('Verbindung trennen?', 'Die Spots bleiben online erhalten. Zum erneuten Verbinden brauchst du den Zugangsschlüssel – kopiere ihn vorher, falls du ihn nirgends gespeichert hast.', 'Trennen', 'disconnect-yes');
+  else if (a === 'disconnect-yes') { LS.del('spots.cfg'); location.reload(); }
+  else if (a === 'edit') {
+    const p = pins.get(openId); if (!p) return;
+    const id = openId;
+    open('', 'form'); openId = null;
+    draft = { id, name: p.name, desc: p.desc, address: p.address, autoAddr: '', lat: p.lat, lng: p.lng, photo: p.photo, r: { g: clampR(p.r.g), a: clampR(p.r.a), u: clampR(p.r.u) } };
+    showForm();
+  }
+  else if (a === 'del') { const p = pins.get(openId); if (p) confirmBox(`„${p.name}“ löschen?`, 'Der Spot verschwindet auf allen verbundenen Handys. Das lässt sich nicht rückgängig machen.', 'Löschen', 'del-yes', p.id); }
+  else if (a === 'del-yes') deletePin(b.dataset.id);
+  else if (a === 'back') { if (pins.has(b.dataset.id)) showProfile(b.dataset.id, true); else closeSheet(); }
+  else if (a === 'cancel') { const id = draft && draft.id; draft = null; if (id && pins.has(id)) showProfile(id, true); else closeSheet(); }
+  else if (a === 'rmphoto') { syncDraft(); draft.photo = ''; showForm(); }
+  else if (a === 'readdr') { syncDraft(); const f = $('#fAddr'); f.value = ''; f.dataset.auto = '1'; draft.address = ''; autoAddress(); }
+  else if (a === 'move') {
+    syncDraft(); const d = draft;
+    startPlacing((lat, lng) => {
+      draft = d; d.lat = lat; d.lng = lng;
+      const wasAuto = !d.address || d.address === d.autoAddr;
+      if (wasAuto) d.address = '';
+      showForm();
+      if (!wasAuto) toast('Position geändert – Adresse ggf. mit ↻ neu ermitteln', 4000);
+    }, () => { draft = d; showForm(); }, [d.lat, d.lng]);
+  }
+});
+document.addEventListener('submit', e => {
+  e.preventDefault();
+  if (e.target.id === 'pf') savePin();
+  else if (e.target.id === 'sf') doSearch();
+  else if (e.target.id === 'setupForm') setupGo();
+});
+document.addEventListener('change', async e => {
+  if (e.target.id !== 'photoIn' || !draft) return;
+  const f = e.target.files && e.target.files[0]; if (!f) return;
+  try { syncDraft(); draft.photo = await toThumb(f); showForm(); } catch (er) { toast(er.message); }
+});
+document.addEventListener('input', e => {
+  if (e.target.id === 'lq') {
+    const q = e.target.value.trim().toLowerCase();
+    $('#lres').innerHTML = listHtml(sortedPins().filter(p => (p.name + ' ' + p.address).toLowerCase().includes(q)));
+  } else if (e.target.id === 'fAddr') e.target.dataset.auto = '0';
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (placing) endPlacing(false); else closeSheet(); } });
+
+/* ---------- Start ---------- */
+for (const el of document.querySelectorAll('[data-ic]')) el.innerHTML = ico(el.dataset.ic);
+if (typeof L === 'undefined') {
+  document.body.innerHTML = '<p style="padding:40px 24px;font:17px/1.5 system-ui">Die Karte konnte nicht geladen werden. Bitte Internetverbindung prüfen und die App neu öffnen.</p>';
+} else {
+  initMap();
+  const cfg = LS.get('spots.cfg', null);
+  if (cfg && cfg.c && cfg.k) connect(cfg); else document.body.classList.add('needs-setup');
+}
+}
+</script>
+</body>
+</html>
