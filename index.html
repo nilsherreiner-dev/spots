@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Spots">
-<meta name="app-version" content="2026.11.25-8">
+<meta name="app-version" content="2026.11.25-9">
 <meta name="theme-color" content="#1f3a30">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -141,6 +141,22 @@ div.item{padding:0;gap:4px}
 .sec .mut{font-size:14px}
 .favs .item:first-child{border-top:0}
 .hint{color:var(--mut);font-size:14px;background:var(--field);border-radius:14px;padding:12px 14px;margin:4px 0 0}
+.searchrow2{display:flex;gap:8px;align-items:center;margin:18px 0 0;position:relative}
+.searchrow2 .searchbox{flex:1;margin:0}
+.sortbtn{flex:none;position:relative;width:48px;height:48px;border-radius:12px;border:0;background:var(--field);display:grid;place-items:center;color:var(--ink)}
+.sortbtn.act{background:var(--acc);color:#fff}
+.sortbtn .bd{position:absolute;top:-5px;right:-5px;min-width:20px;height:20px;border-radius:10px;background:var(--ink);color:var(--bg);font-size:12px;font-weight:700;display:grid;place-items:center;padding:0 5px;border:2px solid var(--bg)}
+.sortmenu{position:absolute;right:0;top:calc(100% + 8px);z-index:20;width:min(290px,100%);background:var(--bg);border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.22);border:1px solid var(--line);padding:6px;display:none}
+.sortmenu.on{display:block}
+.sortmenu .mh{font-size:13px;color:var(--mut);padding:8px 10px 4px;font-weight:500}
+.sopt{display:flex;align-items:center;gap:10px;width:100%;min-height:46px;border:0;background:none;border-radius:10px;padding:0 10px;text-align:left;font-weight:500}
+.sopt:active{background:var(--field)}
+.sopt .ck{width:24px;height:24px;border-radius:7px;border:2px solid var(--line);display:grid;place-items:center;font-size:13px;font-weight:700;flex:none;color:#fff}
+.sopt.on .ck{background:var(--acc);border-color:var(--acc)}
+.sopt .lb{flex:1}
+.sopt small{color:var(--mut);font-size:13px;font-weight:400}
+.sortmenu .reset{width:100%;border:0;background:none;color:var(--acc);font-weight:700;min-height:42px;border-top:1px solid var(--line);margin-top:4px}
+.sortinfo{font-size:13px;color:var(--mut);font-weight:400}
 .searchbox{position:relative;margin:18px 0 0}
 .searchbox svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--mut);width:20px;height:20px}
 .searchbox input{margin:0;padding-left:40px}
@@ -348,6 +364,7 @@ const CATS = [['g', 'Gesamt'], ['a', 'Ambiente'], ['u', 'Ungestört']];
 const IC = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   loc: '<circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
+  sort: '<path d="M7 4v16M7 20l-3-3M7 20l3-3M17 20V4M17 4l-3 3M17 4l3 3"/>',
   gear: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
   fit: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
@@ -660,12 +677,52 @@ function showProfile(id, keepView) {
 }
 const LIST_STEP = 10;
 let listLimit = LIST_STEP, listQuery = '';
-function rowHtml(p) {
-  return `<div class="item"><button class="item-main" data-act="open" data-id="${esc(p.id)}">${avatar(p, 's')}<span class="t"><b>${esc(p.name)}</b><small>${esc(p.address || '')}</small></span>${stars('g', clampR(p.r && p.r.g))}</button>
+function rowHtml(p, k = 'g') {
+  return `<div class="item"><button class="item-main" data-act="open" data-id="${esc(p.id)}">${avatar(p, 's')}<span class="t"><b>${esc(p.name)}</b><small>${esc(p.address || '')}</small></span>${stars(k, clampR(p.r && p.r[k]))}</button>
     <button class="pinbtn${p.fav ? ' on' : ''}" data-act="fav" data-id="${esc(p.id)}" aria-label="${p.fav ? 'Aus Favoriten entfernen' : 'Als Favorit anheften'}" aria-pressed="${p.fav ? 'true' : 'false'}">${ico('pushpin')}</button></div>`;
 }
+/* Sortierung: mehrere Kriterien, Reihenfolge = Priorität; nichts gewählt = A–Z */
+const SORTS = {
+  g: { label: 'Gesamtbewertung', sub: 'beste zuerst' },
+  a: { label: 'Ambiente', sub: 'beste zuerst' },
+  u: { label: 'Ungestört', sub: 'beste zuerst' },
+  new: { label: 'Neueste zuerst', sub: 'zuletzt hinzugefügt oben' },
+  old: { label: 'Älteste zuerst', sub: 'zuerst hinzugefügt oben' }
+};
+let sortSel = (LS.get('spots.sort', ['g']) || []).filter(k => SORTS[k]);
+const tsOf = p => { try { return p.createdAt && p.createdAt.toMillis ? p.createdAt.toMillis() : Date.now(); } catch { return Date.now(); } };
 function sortedPins() {
-  return [...pins.values()].sort((a, b) => clampR(b.r && b.r.g) - clampR(a.r && a.r.g) || String(a.name).localeCompare(String(b.name), 'de'));
+  const cmp = {
+    g: (a, b) => clampR(b.r.g) - clampR(a.r.g), a: (a, b) => clampR(b.r.a) - clampR(a.r.a), u: (a, b) => clampR(b.r.u) - clampR(a.r.u),
+    new: (a, b) => tsOf(b) - tsOf(a), old: (a, b) => tsOf(a) - tsOf(b)
+  };
+  return [...pins.values()].sort((a, b) => {
+    for (const k of sortSel) { const d = cmp[k](a, b); if (d) return d; }
+    return String(a.name).localeCompare(String(b.name), 'de');
+  });
+}
+const rowKey = () => sortSel.find(k => k === 'g' || k === 'a' || k === 'u') || 'g';
+function toggleSort(k) {
+  if (!SORTS[k]) return;
+  if (sortSel.includes(k)) sortSel = sortSel.filter(x => x !== k);
+  else { if (k === 'new' || k === 'old') sortSel = sortSel.filter(x => x !== 'new' && x !== 'old'); sortSel.push(k); }
+  LS.set('spots.sort', sortSel);
+  renderSortUi(true);
+}
+function sortMenuHtml() {
+  return `<div class="mh">Sortieren nach (Reihenfolge = Priorität)</div>` +
+    Object.entries(SORTS).map(([k, s]) => { const i = sortSel.indexOf(k); return `<button class="sopt${i >= 0 ? ' on' : ''}" data-act="sort" data-k="${k}" aria-pressed="${i >= 0}"><span class="ck">${i >= 0 ? i + 1 : ''}</span><span class="lb">${s.label}<br><small>${s.sub}</small></span></button>`; }).join('') +
+    `<button class="reset" data-act="sort-reset">${sortSel.length ? 'Zurücksetzen (A–Z)' : 'Alphabetisch (A–Z) aktiv'}</button>`;
+}
+const sortInfo = () => sortSel.length ? sortSel.map(k => SORTS[k].label.replace(' zuerst', '')).join(' › ') : 'A–Z';
+function renderSortUi(keepOpen) {
+  const b = $('#sortBtn'); if (!b) return;
+  b.classList.toggle('act', sortSel.length > 0);
+  b.innerHTML = ico('sort') + (sortSel.length ? `<span class="bd">${sortSel.length}</span>` : '');
+  const m = $('#sortMenu'); if (m) { m.innerHTML = sortMenuHtml(); if (!keepOpen) m.classList.remove('on'); }
+  const s = $('#sortInfo'); if (s) s.textContent = sortInfo();
+  listLimit = LIST_STEP;
+  const el = $('#lres'); if (el) el.innerHTML = listBodyHtml();
 }
 const favPins = () => [...pins.values()].filter(p => p.fav > 0).sort((a, b) => a.fav - b.fav);
 function filteredPins() {
@@ -675,14 +732,15 @@ function filteredPins() {
 }
 function favHtml() {
   const f = favPins();
-  return f.length ? f.map(rowHtml).join('') : '<p class="hint">Tippe bei einem Spot auf die Nadel, um ihn hier oben anzuheften – bis zu 5 Favoriten.</p>';
+  return f.length ? f.map(p => rowHtml(p)).join('') : '<p class="hint">Tippe bei einem Spot auf die Nadel, um ihn hier oben anzuheften – bis zu 5 Favoriten.</p>';
 }
 function listBodyHtml() {
   const arr = filteredPins();
   if (!pins.size) return '<p class="hint">Noch keine Spots. Tippe unten rechts auf Plus, um den ersten Ort zu setzen.</p>';
   if (!arr.length) return '<p class="empty">Keine Spots für diese Suche.</p>';
   const rest = arr.length - listLimit;
-  return arr.slice(0, listLimit).map(rowHtml).join('') +
+  const k = rowKey();
+  return arr.slice(0, listLimit).map(p => rowHtml(p, k)).join('') +
     (rest > 0 ? `<button class="btn more" data-act="more">Mehr laden <span class="mut">(${rest} weitere)</span></button>` : '');
 }
 function showList() {
@@ -690,8 +748,12 @@ function showList() {
   open(`<h2>Spots <span class="mut" id="lcount">${pins.size}</span></h2>
     <div class="sec" style="margin-top:4px"><h3>Favoriten</h3><span class="mut" id="fcount">${favPins().length}/5</span></div>
     <div class="favs" id="favBox">${favHtml()}</div>
-    <div class="searchbox">${ico('search')}<input id="lq" type="search" value="${esc(listQuery)}" placeholder="Spots durchsuchen" aria-label="Spots durchsuchen" autocomplete="off"></div>
-    <div class="sec"><h3>Alle Spots</h3></div>
+    <div class="searchrow2">
+      <div class="searchbox">${ico('search')}<input id="lq" type="search" value="${esc(listQuery)}" placeholder="Spots durchsuchen" aria-label="Spots durchsuchen" autocomplete="off"></div>
+      <button class="sortbtn${sortSel.length ? ' act' : ''}" id="sortBtn" data-act="sort-menu" aria-label="Sortieren" aria-haspopup="true">${ico('sort')}${sortSel.length ? `<span class="bd">${sortSel.length}</span>` : ''}</button>
+      <div class="sortmenu" id="sortMenu" role="menu">${sortMenuHtml()}</div>
+    </div>
+    <div class="sec"><h3>Alle Spots</h3><span class="sortinfo" id="sortInfo">${esc(sortInfo())}</span></div>
     <div id="lres">${listBodyHtml()}</div>
     <div class="sec" style="margin-top:30px"><h3>Vorschläge</h3>
       <label class="tog"><input type="checkbox" id="sugTog" ${SUG.show ? 'checked' : ''}><span class="sw"></span>Auf Karte</label></div>
@@ -1099,6 +1161,8 @@ function deletePin(id) {
 
 /* ---------- Events ---------- */
 document.addEventListener('click', e => {
+  const sm = $('#sortMenu');
+  if (sm && sm.classList.contains('on') && !e.target.closest('#sortMenu') && !e.target.closest('#sortBtn')) sm.classList.remove('on');
   const st = e.target.closest('[data-star]');
   if (st && draft) { const k = st.dataset.star, v = +st.dataset.v; draft.r[k] = draft.r[k] === v ? 0 : v; renderStars(k); return; }
   const b = e.target.closest('[data-act]'); if (!b) return;
@@ -1123,6 +1187,9 @@ document.addEventListener('click', e => {
   else if (a === 'list') showList();
   else if (a === 'open') { const p = pins.get(b.dataset.id); if (p) { map.setView([p.lat, p.lng], Math.max(map.getZoom(), 15)); showProfile(p.id); } }
   else if (a === 'fav') toggleFav(b.dataset.id);
+  else if (a === 'sort-menu') { const m = $('#sortMenu'); if (m) m.classList.toggle('on'); }
+  else if (a === 'sort') toggleSort(b.dataset.k);
+  else if (a === 'sort-reset') { sortSel = []; LS.set('spots.sort', sortSel); renderSortUi(false); }
   else if (a === 'more') { listLimit += LIST_STEP; const el = $('#lres'); if (el) el.innerHTML = listBodyHtml(); }
   else if (a === 'sug') { const s = SUG.items[+b.dataset.i]; if (s) { map.setView([s.lat, s.lng], Math.max(map.getZoom(), 15)); showSug(+b.dataset.i); } }
   else if (a === 'sug-here') loadSuggestions(true, true);
