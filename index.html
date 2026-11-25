@@ -7,8 +7,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Spots">
-<meta name="app-version" content="2026.11.25-6">
-<meta name="theme-color" content="#16313a">
+<meta name="app-version" content="2026.11.25-7">
+<meta name="theme-color" content="#1f3a30">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="manifest" href="manifest.webmanifest">
 <title>Spots</title>
@@ -236,7 +236,14 @@ body.needs-setup #setup{display:block}
 {
 const FB_VER = '10.12.2';
 /* Firebase-Projekt (öffentliche Web-Konfiguration – kein Geheimnis; geschützt wird über Login + Firestore-Regeln) */
-const FIREBASE_CONFIG = null; // z. B. { apiKey: '…', authDomain: '…', projectId: '…', storageBucket: '…', messagingSenderId: '…', appId: '…' }
+const FIREBASE_CONFIG = {
+  apiKey: 'AIzaSyA9JQT3l8-ag_MvqQ4hoo6t6KzG3gULgSY',
+  authDomain: 'fsapp-bf51d.firebaseapp.com',
+  projectId: 'fsapp-bf51d',
+  storageBucket: 'fsapp-bf51d.firebasestorage.app',
+  messagingSenderId: '355881377931',
+  appId: '1:355881377931:web:6c74f04fdad1e5ec03b48e'
+};
 const MAP_ID = 'main';        // es gibt genau eine gemeinsame Karte
 const APP_VERSION = (document.querySelector('meta[name=app-version]') || {}).content || '0';
 const ATTR = '<a href="https://openfreemap.org">OpenFreeMap</a> © <a href="https://www.openmaptiles.org/">OpenMapTiles</a> Daten von <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
