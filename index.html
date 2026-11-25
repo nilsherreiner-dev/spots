@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Spots">
+<meta name="app-version" content="2026.11.25-6">
+<meta name="theme-color" content="#16313a">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Spots</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap">
+<style>
+/*
+VOICE: ruhig und persönlich, wie ein eigenes Notizbuch voller Lieblingsorte
+IDEA: eine Landkarte ganz ohne Beschriftung, auf die man Fotos pinnt
+PICTURE: die randlose Karte selbst, Fotopins als runde Stecknadeln mit weißem Rand
+COLOUR/TYPE: Kartengrund, Koralle als einziger Akzent, Sterne in Gold; DM Sans
+LAYOUT: Vollbildkarte, schwebende Knöpfe unten rechts, alles andere in Bottom-Sheets
+*/
+:root{--sug:#3f7f5a;--bg:#fff;--ink:#16191d;--mut:#6b7280;--line:#e6e7ea;--chip:rgba(255,255,255,.93);--acc:#f2542d;--gold:#f5b301;--field:#f2f3f5;--sh:0 6px 24px rgba(0,0,0,.18)}
+@media (prefers-color-scheme:dark){:root{--bg:#1b1d21;--ink:#f2f3f5;--mut:#9aa0a8;--line:#30333a;--chip:rgba(32,34,38,.92);--field:#272a30}}
+*{box-sizing:border-box;min-width:0;-webkit-tap-highlight-color:transparent}
+html{height:100%;min-height:var(--appH,100%);overflow:hidden;background:#f6f1e4}
+body{margin:0;position:relative;height:100%;height:var(--appH,100%);overflow:hidden;background:#f6f1e4;--sb:max(env(safe-area-inset-bottom),22px)}
+body{font:16px/1.5 'DM Sans',system-ui,-apple-system,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer}
+#map{position:absolute;inset:0;z-index:0;background:#f6f1e4}
+body[data-mapstyle=nacht] #map{background:#1e2827}
+body[data-mapstyle=schlicht] #map{background:#f5f3f0}body[data-mapstyle=natur] #map{background:#f6f1e4}
+svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+.top{position:absolute;top:calc(env(safe-area-inset-top) + 30px);left:12px;right:12px;display:flex;gap:8px;justify-content:space-between;z-index:500;pointer-events:none}
+.top>*{pointer-events:auto}
+.topfade{position:absolute;left:0;right:0;top:0;height:calc(env(safe-area-inset-top) + 18px);background:linear-gradient(var(--fade,#f6f1e4),transparent);opacity:.85;z-index:450;pointer-events:none}
+.chip{background:var(--chip);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-radius:999px;box-shadow:var(--sh);height:44px;padding:0 16px;display:flex;align-items:center;gap:9px;border:0;font-weight:700;white-space:nowrap}
+.chip.ic{width:44px;padding:0;justify-content:center}
+.dot{flex:none;width:9px;height:9px;border-radius:50%;background:#9aa0a8}.dot.ok{background:#22c55e}.dot.off{background:#f59e0b}.dot.err{background:#ef4444}
+.fabs{position:absolute;right:14px;bottom:calc(var(--sb) + 14px);display:flex;flex-direction:column;gap:10px;z-index:500;align-items:center}
+.fab{width:48px;height:48px;border-radius:50%;border:0;background:var(--chip);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);box-shadow:var(--sh);display:grid;place-items:center}
+.fab.main{width:64px;height:64px;background:var(--acc);color:#fff}
+.fab.main svg{width:28px;height:28px;stroke-width:2.4}
+.leaflet-control-attribution{font:10px/1.4 'DM Sans',sans-serif!important;background:rgba(255,255,255,.6)!important;border-radius:6px 0 0 0}
+.leaflet-bottom.leaflet-left{margin-bottom:calc(var(--sb) - 6px)}
+
+.pin{background:none;border:0}
+.pin-b{position:relative;width:48px;height:48px;border-radius:50%;background:var(--acc);border:3px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,.35);display:grid;place-items:center;color:#fff;font-weight:700;font-size:16px}
+.pin-b img,.leaflet-container .leaflet-marker-pane .pin-b img{width:42px!important;height:42px!important;max-width:42px!important;max-height:42px!important;border-radius:50%;object-fit:cover;display:block}
+.pin-b::after{content:'';position:absolute;left:50%;top:100%;margin-top:-1px;transform:translateX(-50%);border-left:7px solid transparent;border-right:7px solid transparent;border-top:10px solid #fff}
+.me{width:18px;height:18px;border-radius:50%;background:#2f80ff;border:3px solid #fff;box-shadow:0 0 0 6px rgba(47,128,255,.22)}
+
+#cross{position:absolute;left:50%;top:50%;width:48px;height:58px;margin:-58px 0 0 -24px;z-index:600;pointer-events:none;display:none}
+#placeHint{position:absolute;top:calc(env(safe-area-inset-top) + 30px);left:50%;transform:translateX(-50%);z-index:600;display:none;font-weight:500}
+#placeBar{position:absolute;left:14px;right:14px;bottom:calc(var(--sb) + 14px);z-index:600;display:none;gap:10px;max-width:520px;margin:0 auto}
+#placeBar .btn{flex:1;box-shadow:var(--sh)}
+body.placing #cross,body.placing #placeHint{display:block}
+body.placing #placeBar{display:flex}
+body.placing .fabs,body.placing .top{display:none}
+
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.28);opacity:0;pointer-events:none;transition:opacity .2s;z-index:900}
+.scrim.on{opacity:1;pointer-events:auto}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:1000;background:var(--bg);border-radius:22px 22px 0 0;box-shadow:0 -10px 40px rgba(0,0,0,.22);max-height:88vh;max-height:88dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:8px 20px calc(var(--sb) + 18px);transform:translateY(105%);transition:transform .28s cubic-bezier(.2,.8,.2,1);max-width:560px;margin:0 auto}
+.sheet.on{transform:none}
+@media (prefers-reduced-motion:reduce){.sheet,.scrim{transition:none}}
+.grab{width:40px;height:5px;border-radius:3px;background:var(--line);margin:2px auto 8px}
+.x{position:absolute;right:10px;top:8px;width:44px;height:44px;border:0;background:none;display:grid;place-items:center;color:var(--mut)}
+h2{font-size:24px;line-height:1.1;margin:6px 48px 16px 0;text-wrap:balance}
+h3{font-size:16px;margin:22px 0 8px}
+.mut{color:var(--mut)}.small{font-size:14px}
+p{margin:0 0 10px}
+
+.btn{min-height:48px;border-radius:14px;border:0;padding:0 18px;font-weight:700;background:var(--field);display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn.primary{background:var(--acc);color:#fff}
+.btn.danger{color:#e5484d}
+.btn.wide{width:100%;margin-top:8px}
+.btn:focus-visible,.fab:focus-visible,.chip:focus-visible,.choice:focus-visible,.item:focus-visible,.st:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.row-btns{display:flex;gap:10px;margin-top:18px}.row-btns .btn{flex:1}
+.linkbtn{border:0;background:none;color:var(--acc);font-weight:700;padding:10px 0;min-height:44px}
+
+.form label{display:block;font-size:14px;font-weight:500;color:var(--mut);margin-bottom:12px}
+input,textarea{display:block;width:100%;margin-top:6px;font:inherit;font-size:16px;color:var(--ink);background:var(--field);border:1.5px solid transparent;border-radius:12px;padding:12px 14px;outline:none;-webkit-appearance:none;appearance:none}
+textarea{resize:vertical;min-height:84px}
+input:focus,textarea:focus{border-color:var(--acc)}
+.addrrow{display:flex;gap:8px;align-items:flex-end}.addrrow label{flex:1;margin:0}
+.addrrow .btn{width:48px;padding:0;flex:none;margin-bottom:0}
+.photo{display:flex!important;align-items:center;gap:16px;margin-bottom:16px!important}
+.photo .t{font-weight:700;color:var(--acc);font-size:16px}
+.photo input{display:none}
+
+.av{width:84px;height:84px;border-radius:50%;flex:none;background:var(--acc);color:#fff;display:grid;place-items:center;font-weight:700;font-size:28px;overflow:hidden;border:3px solid var(--bg);box-shadow:0 4px 14px rgba(0,0,0,.18)}
+.av img{width:100%;height:100%;object-fit:cover;display:block}
+.av.s{width:46px;height:46px;font-size:16px;border-width:2px}
+.av.ph{background:var(--field);color:var(--mut);box-shadow:none;border:2px dashed var(--line)}
+
+.stars{display:inline-flex;gap:1px;flex:none}
+.st{width:24px;height:24px;padding:0;border:0;background:none;color:var(--line);display:inline-grid;place-items:center}
+.st svg{width:100%;height:100%;fill:currentColor}
+.st.on{color:var(--gold)}
+.form .st{width:42px;height:42px;padding:5px}
+.rate{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--line)}
+.rate>span:first-child{font-weight:500}
+.rate .n{font-variant-numeric:tabular-nums;color:var(--mut);width:2.2em;text-align:right;white-space:nowrap}
+.rate .r{display:flex;align-items:center;gap:6px}
+
+.head{display:flex;gap:16px;align-items:center;margin:6px 44px 4px 0}
+.head h2{margin:0 0 2px}
+.addr{color:var(--mut);margin:0;font-size:15px}
+.score{display:flex;align-items:center;gap:14px;margin:18px 0 10px;padding:14px 16px;border-radius:16px;background:var(--field)}
+.score b{font-size:44px;line-height:1;font-variant-numeric:tabular-nums}
+.score .st{width:28px;height:28px}
+.score small{display:block;color:var(--mut);font-size:14px}
+.desc{white-space:pre-wrap;overflow-wrap:anywhere;margin:14px 0}
+.ext{display:inline-flex;align-items:center;gap:6px;color:var(--acc);font-weight:700;text-decoration:none;min-height:44px}
+
+.choice{display:flex;align-items:center;gap:14px;width:100%;padding:14px;border:0;border-radius:16px;background:var(--field);margin-bottom:10px;text-align:left;font-weight:700}
+.choice small{display:block;color:var(--mut);font-weight:400;font-size:14px}
+.choice .c{width:44px;height:44px;border-radius:50%;background:var(--acc);color:#fff;display:grid;place-items:center;flex:none}
+.searchrow{display:flex;gap:8px;align-items:center}.searchrow input{margin:0}.searchrow .btn{flex:none}
+.item{display:flex;gap:12px;align-items:center;width:100%;text-align:left;background:none;border:0;border-top:1px solid var(--line);padding:10px 0;min-height:56px}
+div.item{padding:0;gap:4px}
+.item-main{display:flex;gap:12px;align-items:center;flex:1;min-width:0;text-align:left;background:none;border:0;padding:10px 0;min-height:56px}
+.pinbtn{flex:none;width:44px;height:44px;border:0;background:none;color:var(--line);display:grid;place-items:center;border-radius:12px}
+.pinbtn svg{width:20px;height:20px}
+.pinbtn.on{color:var(--acc)}.pinbtn.on svg{fill:currentColor}
+.sec{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:22px 0 6px}
+.sec h3{margin:0}
+.sec .mut{font-size:14px}
+.favs .item:first-child{border-top:0}
+.hint{color:var(--mut);font-size:14px;background:var(--field);border-radius:14px;padding:12px 14px;margin:4px 0 0}
+.searchbox{position:relative;margin:18px 0 0}
+.searchbox svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--mut);width:20px;height:20px}
+.searchbox input{margin:0;padding-left:40px}
+.more{width:100%;margin-top:8px}
+.tog{display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:500;color:var(--mut);cursor:pointer;min-height:44px}
+.tog input{position:absolute;opacity:0;width:1px;height:1px}
+.tog .sw{width:42px;height:26px;border-radius:13px;background:var(--line);position:relative;transition:background .2s;flex:none}
+.tog .sw::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .2s}
+.tog input:checked+.sw{background:var(--sug)}
+.tog input:checked+.sw::after{transform:translateX(16px)}
+.tog input:focus-visible+.sw{outline:3px solid var(--acc);outline-offset:2px}
+.sico{width:46px;height:46px;border-radius:50%;flex:none;display:grid;place-items:center;background:var(--sug);color:#fff;font-weight:700;font-size:17px;border:2px solid var(--bg);box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.sico svg{width:22px;height:22px;stroke:#fff}
+.dist{flex:none;font-variant-numeric:tabular-nums;color:var(--mut);font-size:14px;white-space:nowrap}
+.sugpin .pin-b{width:38px;height:38px;background:var(--sug);font-size:14px}
+.sugpin .pin-b svg{width:18px;height:18px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.sugpin .pin-b::after{border-left-width:6px;border-right-width:6px;border-top-width:8px}
+.nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px}
+.nav a.btn{text-decoration:none;color:var(--ink)}
+.modes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:8px}
+.modes .btn{font-weight:500;padding:0 6px;font-size:15px}
+#routeBar{position:absolute;left:12px;right:84px;bottom:calc(var(--sb) + 14px);z-index:520;display:none;align-items:center;gap:10px;background:var(--chip);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-radius:18px;box-shadow:var(--sh);padding:8px 8px 8px 14px;max-width:420px}
+#routeBar.on{display:flex}
+#routeBar .rt{flex:1;min-width:0;line-height:1.25}
+#routeBar .rt b{display:block;font-size:17px;white-space:nowrap}
+#routeBar .rt small{color:var(--mut);font-size:13px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#routeBar .btn{min-height:40px;padding:0 12px;font-size:14px}
+#routeBar .x2{width:40px;height:40px;border:0;background:none;display:grid;place-items:center;color:var(--mut);flex:none}
+body.placing #routeBar{display:none}
+.item .t{flex:1}.item .t b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.item .t small{color:var(--mut);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .st{width:15px;height:15px}
+.empty{color:var(--mut);padding:18px 0;text-align:center}
+.seg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.seg .btn{padding:0 8px}
+
+#toast{position:absolute;left:50%;top:calc(env(safe-area-inset-top) + 86px);transform:translate(-50%,-10px);background:#16191d;color:#fff;padding:10px 16px;border-radius:12px;font-size:15px;z-index:3000;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;max-width:calc(100vw - 32px);text-align:center}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+
+#setup{position:absolute;inset:0;z-index:2000;background:var(--bg);overflow-y:auto;padding:calc(env(safe-area-inset-top) + 24px) 22px calc(env(safe-area-inset-bottom) + 28px);display:none}
+body.needs-setup #setup{display:block}
+#setup .wrap{max-width:520px;margin:0 auto}
+#setup h1{font-size:44px;line-height:1.05;margin:10px 0 8px}
+#setup .art{display:block;width:100%;height:auto;border-radius:22px;margin-bottom:18px}
+#setup ol{padding-left:20px;margin:6px 0 14px;color:var(--mut)}
+
+.err{color:#e5484d;font-weight:500;min-height:1.5em;margin-top:10px}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="topfade"></div>
+
+<div class="top">
+  <button class="chip" data-act="list" aria-label="Alle Spots anzeigen"><span class="dot" id="dot"></span><span id="stxt">Spots</span></button>
+  <button class="chip ic" data-act="settings" aria-label="Einstellungen" data-ic="gear"></button>
+</div>
+<div class="fabs">
+  <button class="fab" data-act="fit" aria-label="Alle Spots zeigen" data-ic="fit"></button>
+  <button class="fab" data-act="me" aria-label="Mein Standort" data-ic="loc"></button>
+  <button class="fab main" data-act="add" aria-label="Spot hinzufügen" data-ic="plus"></button>
+</div>
+
+<svg id="cross" viewBox="0 0 48 58" aria-hidden="true"><path d="M24 57 16 44h16z" fill="#fff"/><circle cx="24" cy="24" r="21" fill="#f2542d" stroke="#fff" stroke-width="3"/><circle cx="24" cy="24" r="5" fill="#fff"/></svg>
+<div id="placeHint" class="chip">Karte verschieben, bis die Nadel sitzt</div>
+<div id="placeBar"><button class="btn" data-act="place-cancel">Abbrechen</button><button class="btn primary" data-act="place-ok">Hier setzen</button></div>
+
+<div class="scrim" id="scrim" data-act="close"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Details">
+  <div class="grab"></div>
+  <button class="x" data-act="close" aria-label="Schließen" data-ic="x"></button>
+  <div id="sb"></div>
+</div>
+<div id="routeBar" role="status"><div class="rt"><b id="rtMain"></b><small id="rtSub"></small></div><a class="btn" id="rtApple" href="#">Navi</a><button class="x2" data-act="route-clear" aria-label="Route ausblenden" data-ic="x"></button></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<div id="setup">
+  <form class="wrap form" id="setupForm">
+    <svg class="art" viewBox="0 0 520 220" aria-hidden="true">
+      <rect width="520" height="220" fill="#16313a"/>
+      <g fill="none" stroke="#2c5560" stroke-width="2">
+        <path d="M-10 60C80 30 140 90 230 70S400 10 530 50"/><path d="M-10 110C90 80 160 140 260 118S420 70 530 104"/>
+        <path d="M-10 160C70 140 170 190 270 168S430 130 530 158"/><path d="M-10 205C100 180 190 230 300 210S440 185 530 200"/>
+      </g>
+      <g transform="translate(150 54)"><path d="M24 57 16 44h16z" fill="#fff"/><circle cx="24" cy="24" r="21" fill="#f5b301" stroke="#fff" stroke-width="3"/></g>
+      <g transform="translate(340 96)"><path d="M24 57 16 44h16z" fill="#fff"/><circle cx="24" cy="24" r="21" fill="#7cc4b8" stroke="#fff" stroke-width="3"/></g>
+      <g transform="translate(232 70) scale(1.5)"><path d="M24 57 16 44h16z" fill="#fff"/><circle cx="24" cy="24" r="21" fill="#f2542d" stroke="#fff" stroke-width="3"/><circle cx="24" cy="24" r="6" fill="#fff"/></g>
+    </svg>
+    <h1>Spots</h1>
+    <p class="mut">Eure gemeinsame Karte. Einmal anmelden – danach bleibt die App auf diesem Handy angemeldet, auch nach Updates.</p>
+    <label>E-Mail<input id="lgEmail" type="email" autocomplete="username" autocapitalize="off" spellcheck="false" inputmode="email"></label>
+    <label>Passwort<input id="lgPw" type="password" autocomplete="current-password"></label>
+    <button class="btn primary wide" type="submit" id="lgBtn">Anmelden</button>
+    <p class="err" id="setupErr"></p>
+  </form>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"></script>
+<script type="module">
+{
+const FB_VER = '10.12.2';
+/* Firebase-Projekt (öffentliche Web-Konfiguration – kein Geheimnis; geschützt wird über Login + Firestore-Regeln) */
+const FIREBASE_CONFIG = null; // z. B. { apiKey: '…', authDomain: '…', projectId: '…', storageBucket: '…', messagingSenderId: '…', appId: '…' }
+const MAP_ID = 'main';        // es gibt genau eine gemeinsame Karte
+const APP_VERSION = (document.querySelector('meta[name=app-version]') || {}).content || '0';
+const ATTR = '<a href="https://openfreemap.org">OpenFreeMap</a> © <a href="https://www.openmaptiles.org/">OpenMapTiles</a> Daten von <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+const OFM = 'https://tiles.openfreemap.org/styles/';
+const STYLES = { natur: { name: 'Natur', pal: 'natur' }, nacht: { name: 'Nacht', pal: 'nacht' }, schlicht: { name: 'Schlicht', ofm: 'positron' } };
+/* Eigene Paletten: Natur-Pastell (Tag) und gedämpftes Waldgrün (Nacht) */
+const PAL = {
+  natur: { bg: '#f6f1e4', farm: '#f0e7c9', resid: '#efe8dd', indus: '#ece4e2', grass: '#dcebc2', park: '#c4e3ad', cem: '#d3e6c6', pitch: '#cde7bb',
+    wet: '#cfe6d8', sand: '#f3e3bc', rock: '#e4ded4', ice: '#f3f8fa', wood: '#b3d6a0', woodEdge: '#93c283', tree: '#6fa968', paisle: '#7fae8c', parkDot: '#b5a995', dotRing: '#ffffff', prot: '#6fbf8f', protLine: '#5f9f76',
+    water: '#a9d4e8', waterLine: '#8fc4dc', bld: '#e6dccf', bldLine: '#d5c7b5', path: '#b69c78', rail: '#cfc4b6', border: '#b7a2d0',
+    motor: '#f4d6ba', motorC: '#e5c19f', major: '#f9e4c6', majorC: '#e8c99e', mid: '#fff3dc', midC: '#e7d9c1', minor: '#ffffff', minorC: '#e2d6c3',
+    parkP: '#4f8a63', relief: 0.45, bright: 1 },
+  nacht: { bg: '#1e2827', farm: '#252f29', resid: '#242d2d', indus: '#282c2e', grass: '#26372b', park: '#2b4431', cem: '#283a2e', pitch: '#2a3d2e',
+    wet: '#22383a', sand: '#38342a', rock: '#2b2f2f', ice: '#2d383c', wood: '#2f5137', woodEdge: '#3d6646', tree: '#5d9a66', paisle: '#4f7d60', parkDot: '#6b716d', dotRing: '#1e2827', prot: '#5fbf86', protLine: '#7fd3a2',
+    water: '#1c3a4b', waterLine: '#295267', bld: '#2c3535', bldLine: '#364141', path: '#7d6f57', rail: '#3d4545', border: '#8f7fb0',
+    motor: '#6b5640', motorC: '#3f3327', major: '#544838', majorC: '#3a3229', mid: '#3d4544', midC: '#2b3232', minor: '#384241', minorC: '#283030',
+    parkP: '#6fbf8f', relief: 0.25, bright: 0.35 }
+};
+function buildStyle(P) {
+  const S = 'openmaptiles';
+  const cls = (...c) => ['match', ['get', 'class'], c, true, false];
+  const notTunnel = ['!=', ['get', 'brunnel'], 'tunnel'];
+  const isLine = ['match', ['geometry-type'], ['LineString', 'MultiLineString'], true, false];
+  const natF = ['any', ...['natur', 'landschaft', 'wildlife', 'nature', 'national', 'biosph', 'forest', 'wald', 'wetland', 'bird', 'vogel', 'fauna', 'flora', 'ffh', 'habitat'].map(s => ['in', s, ['downcase', ['to-string', ['get', 'class']]]])];
+  const isPA = ['==', ['get', 'service'], 'parking_aisle'];
+  const z = (...st) => ['interpolate', ['exponential', 1.5], ['zoom'], ...st];
+  const fill = (id, layer, filter, color, extra = {}) => ({ id, type: 'fill', source: S, 'source-layer': layer, filter, paint: { 'fill-color': color, ...extra } });
+  const L = [
+    { id: 'bg', type: 'background', paint: { 'background-color': P.bg } },
+    { id: 'relief', type: 'raster', source: 'ne2', maxzoom: 8, paint: { 'raster-opacity': ['interpolate', ['linear'], ['zoom'], 0, P.relief, 7, 0], 'raster-saturation': -0.55, 'raster-brightness-max': P.bright } },
+    fill('farm', 'landcover', cls('farmland'), P.farm),
+    fill('resid', 'landuse', cls('residential', 'suburb', 'neighbourhood', 'quarter'), P.resid, { 'fill-opacity': 0.85 }),
+    fill('indus', 'landuse', cls('industrial', 'commercial', 'retail', 'railway', 'garages'), P.indus),
+    fill('grass', 'landcover', ['all', cls('grass'), ['!=', ['get', 'subclass'], 'park']], P.grass),
+    fill('cemetery', 'landuse', cls('cemetery'), P.cem),
+    fill('pitch', 'landuse', cls('pitch', 'playground', 'stadium', 'track'), P.pitch),
+    fill('citypark', 'landcover', ['==', ['get', 'subclass'], 'park'], P.park),
+    fill('citypark2', 'landuse', cls('park', 'garden'), P.park),
+    fill('wet', 'landcover', cls('wetland'), P.wet),
+    fill('sand', 'landcover', cls('sand'), P.sand),
+    fill('rock', 'landcover', cls('rock'), P.rock),
+    fill('ice', 'landcover', cls('ice'), P.ice),
+    fill('wood', 'landcover', cls('wood'), P.wood, { 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0.55, 9, 1] }),
+    { id: 'wood-pattern', type: 'fill', source: S, 'source-layer': 'landcover', minzoom: 11, filter: cls('wood'), paint: { 'fill-pattern': 'trees-' + P.tree.slice(1), 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12.5, 0.85] } },
+    { id: 'wood-edge', type: 'line', source: S, 'source-layer': 'landcover', minzoom: 11, filter: cls('wood'), paint: { 'line-color': P.woodEdge, 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 0.4, 16, 1.3], 'line-opacity': 0.8 } },
+    fill('water', 'water', notTunnel, P.water),
+    { id: 'river', type: 'line', source: S, 'source-layer': 'waterway', minzoom: 8, filter: ['all', notTunnel, cls('river')], paint: { 'line-color': P.waterLine, 'line-width': z(8, 0.6, 13, 2, 18, 8) } },
+    { id: 'stream', type: 'line', source: S, 'source-layer': 'waterway', minzoom: 12, filter: ['all', notTunnel, ['!', cls('river')]], paint: { 'line-color': P.waterLine, 'line-width': z(12, 0.4, 18, 3) } },
+    fill('protected', 'park', natF, P.prot, { 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 5, 0.2, 14, 0.12] }),
+    { id: 'protected-line', type: 'line', source: S, 'source-layer': 'park', filter: natF, paint: { 'line-color': P.protLine, 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.35, 12, 0.7, 16, 1.1], 'line-dasharray': [4, 4], 'line-opacity': 0.55 } },
+    fill('building', 'building', true, P.bld, { 'fill-outline-color': P.bldLine, 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 13.5, 0, 15, 1] }),
+    { id: 'track', type: 'line', source: S, 'source-layer': 'transportation', minzoom: 12, filter: ['all', isLine, cls('track')], paint: { 'line-color': P.path, 'line-width': z(12, 0.6, 18, 3), 'line-dasharray': [3, 2], 'line-opacity': 0.8 } },
+    { id: 'path', type: 'line', source: S, 'source-layer': 'transportation', minzoom: 13, filter: ['all', isLine, cls('path', 'pedestrian')], paint: { 'line-color': P.path, 'line-width': z(13, 0.5, 18, 2.2), 'line-dasharray': [2, 1.5] } },
+    { id: 'tunnel', type: 'line', source: S, 'source-layer': 'transportation', minzoom: 12, filter: ['all', isLine, ['==', ['get', 'brunnel'], 'tunnel'], ['!', cls('path', 'pedestrian', 'track', 'rail', 'transit')]], paint: { 'line-color': P.minorC, 'line-width': z(12, 1, 18, 8), 'line-opacity': 0.5 } }
+  ];
+  const tiers = [
+    ['service', ['service'], 13, P.minor, P.minorC, [13, 0.4, 15, 1.5, 18, 6]],
+    ['minor', ['minor', 'street', 'street_limited', 'busway'], 11, P.minor, P.minorC, [11, 0.3, 14, 2, 18, 11]],
+    ['mid', ['secondary', 'tertiary'], 8, P.mid, P.midC, [8, 0.4, 12, 1.2, 14, 3.5, 18, 14]],
+    ['major', ['primary', 'trunk'], 6, P.major, P.majorC, [6, 0.5, 10, 1.6, 14, 5, 18, 18]],
+    ['motor', ['motorway'], 5, P.motor, P.motorC, [5, 0.8, 10, 2.4, 14, 6, 18, 20]]
+  ];
+  const base = c => ['all', isLine, notTunnel, ['!', isPA], cls(...c)];
+  for (const [id, c, mz, col, cas, st] of tiers) {
+    const casing = st.map((v, i) => i % 2 ? +(v + Math.max(1, v * 0.35)).toFixed(2) : v);
+    L.push({ id: id + '-case', type: 'line', source: S, 'source-layer': 'transportation', minzoom: Math.max(mz, 10), filter: base(c), layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': cas, 'line-width': z(...casing) } });
+  }
+  for (const [id, c, mz, col, , st] of tiers) L.push({ id: id, type: 'line', source: S, 'source-layer': 'transportation', minzoom: mz, filter: base(c), layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': col, 'line-width': z(...st) } });
+  L.push(
+    { id: 'rail', type: 'line', source: S, 'source-layer': 'transportation', minzoom: 10, filter: ['all', isLine, notTunnel, cls('rail', 'transit')], paint: { 'line-color': P.rail, 'line-width': z(10, 0.6, 18, 3), 'line-dasharray': [4, 2] } },
+    { id: 'border-state', type: 'line', source: S, 'source-layer': 'boundary', minzoom: 5, filter: ['all', ['==', ['get', 'admin_level'], 4], ['!=', ['get', 'maritime'], 1]], paint: { 'line-color': P.border, 'line-width': 1, 'line-dasharray': [3, 2], 'line-opacity': 0.6 } },
+    { id: 'border-country', type: 'line', source: S, 'source-layer': 'boundary', filter: ['all', ['==', ['get', 'admin_level'], 2], ['!=', ['get', 'maritime'], 1]], paint: { 'line-color': P.border, 'line-width': ['interpolate', ['linear'], ['zoom'], 3, 1, 10, 2.2], 'line-dasharray': [4, 2] } },
+    { id: 'parking-aisle', type: 'line', source: S, 'source-layer': 'transportation', minzoom: 14, filter: ['all', isLine, isPA], paint: { 'line-color': P.paisle, 'line-width': z(14, 1, 18, 5), 'line-opacity': 0.75 } },
+    { id: 'parking', type: 'circle', source: S, 'source-layer': 'poi', minzoom: 14, filter: cls('parking'), paint: { 'circle-color': P.parkDot, 'circle-radius': ['interpolate', ['linear'], ['zoom'], 14, 2.5, 17, 4.5], 'circle-stroke-color': P.dotRing, 'circle-stroke-width': 1 } },
+    { id: 'forestpark', type: 'circle', source: 'forestpark', minzoom: 14, paint: { 'circle-color': P.parkP, 'circle-radius': ['interpolate', ['linear'], ['zoom'], 14, 7, 17, 10], 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2 } },
+    { id: 'forestpark-p', type: 'symbol', source: 'forestpark', minzoom: 14, layout: { 'text-field': 'P', 'text-font': ['Noto Sans Bold'], 'text-size': ['interpolate', ['linear'], ['zoom'], 14, 10, 17, 13], 'text-allow-overlap': true, 'text-ignore-placement': true }, paint: { 'text-color': '#ffffff' } }
+  );
+  return {
+    version: 8,
+    glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+    sources: {
+      openmaptiles: { type: 'vector', url: 'https://tiles.openfreemap.org/planet' },
+      forestpark: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
+      ne2: { type: 'raster', tiles: ['https://tiles.openfreemap.org/natural_earth/ne2sr/{z}/{x}/{y}.png'], tileSize: 256, maxzoom: 6 }
+    },
+    layers: L
+  };
+}
+const FALLBACK = { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', attr: 'Tiles © Esri' };
+const styleCache = {};
+let styleReq = 0;
+const CATS = [['g', 'Gesamt'], ['a', 'Ambiente'], ['u', 'Ungestört']];
+const IC = {
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  loc: '<circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
+  gear: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
+  fit: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
+  map: '<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/>',
+  refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/>',
+  ext: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
+  pushpin: '<path d="M9 3h6l-1 6 3 3v2H7v-2l3-3zM12 14v7"/>',
+  eye: '<path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/>',
+  hut: '<path d="M3 12l9-7.5 9 7.5M6 10.5V20h12v-9.5M10 20v-5h4v5"/>',
+  picnic: '<path d="M4 9h16M8 9l-3 10M16 9l3 10M6 15h12"/>',
+  car: '<path d="M5 16V11l2-5h10l2 5v5M5 16h14M5 16v2M19 16v2M5 11h14"/><circle cx="8" cy="13.5" r=".6"/><circle cx="16" cy="13.5" r=".6"/>',
+  bike: '<circle cx="6" cy="16" r="3.5"/><circle cx="18" cy="16" r="3.5"/><path d="M6 16l4-7h5l3 7M10 9l-1.5-3H6M15 9l-2 7"/>',
+  walk: '<circle cx="13" cy="4.5" r="1.8"/><path d="M9 21l2.5-6.5L14 17v4M11.5 14.5L12 9l3.5 3.5L18 13M12 9l-3 2-1 3"/>',
+  route: '<circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="6" r="2.5"/><path d="M8.5 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.5"/>'
+};
+const STAR = '<svg viewBox="0 0 24 24"><path d="M12 2.8l2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.2l-5.7 3.1 1.2-6.4-4.7-4.4 6.4-.8z"/></svg>';
+
+const $ = s => document.querySelector(s);
+const ico = k => `<svg class="i" viewBox="0 0 24 24">${IC[k]}</svg>`;
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  del(k) { try { localStorage.removeItem(k); } catch {} }
+};
+const okPhoto = s => typeof s === 'string' && s.length < 400000 && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(s);
+const initials = n => (String(n || '').trim().split(/\s+/).map(w => w[0] || '').join('').slice(0, 2) || '?').toUpperCase();
+const clampR = v => Math.max(0, Math.min(5, Math.round(Number(v) || 0)));
+const finite = v => typeof v === 'number' && isFinite(v);
+
+let map, tiles, meMarker = null, fs = null, unsub = null, userEmail = '', updatePending = null;
+let mode = '', openId = null, draft = null, placing = null, results = [], firstSnap = true;
+const pins = new Map(), markers = new Map();
+const hadView = LS.get('spots.view', null) !== null;
+
+/* ---------- UI helpers ---------- */
+let toastT;
+function toast(msg, ms = 2600) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('on');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), ms);
+}
+function setStatus(txt, state) {
+  $('#stxt').textContent = txt;
+  $('#dot').className = 'dot' + (state ? ' ' + state : '');
+}
+function open(html, m) {
+  mode = m; $('#sb').innerHTML = html;
+  $('#sheet').classList.add('on'); $('#scrim').classList.add('on');
+  $('#sheet').scrollTop = 0;
+}
+function closeSheet() {
+  mode = ''; openId = null; draft = null;
+  $('#sheet').classList.remove('on'); $('#scrim').classList.remove('on');
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  if (updatePending) setTimeout(applyUpdate, 300);
+}
+function stars(key, val, editable) {
+  let h = '';
+  for (let i = 1; i <= 5; i++) {
+    const on = i <= val ? ' on' : '';
+    h += editable
+      ? `<button type="button" class="st${on}" data-star="${key}" data-v="${i}" aria-label="${i} von 5">${STAR}</button>`
+      : `<span class="st${on}">${STAR}</span>`;
+  }
+  return `<span class="stars" data-for="${key}" role="img" aria-label="${val} von 5 Sternen">${h}</span>`;
+}
+function avatar(p, cls = '') {
+  if (okPhoto(p.photo)) return `<span class="av ${cls}"><img src="${p.photo}" alt=""></span>`;
+  return `<span class="av ${cls}">${esc(initials(p.name))}</span>`;
+}
+function fmtDate(ts) {
+  try { const d = ts && ts.toDate ? ts.toDate() : null; return d ? d.toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric' }) : ''; } catch { return ''; }
+}
+
+/* ---------- iOS-26-Fix: App exakt so hoch wie der Bildschirm ---------- */
+function fitScreen() {
+  // Als Home-Bildschirm-App gehört der App der ganze Bildschirm; iOS 26 meldet die Höhe aber falsch.
+  if (!navigator.standalone || !screen.width || !screen.height) return;
+  const long = Math.max(screen.width, screen.height), short = Math.min(screen.width, screen.height);
+  const h = window.innerWidth > window.innerHeight ? short : long;
+  document.documentElement.style.setProperty('--appH', h + 'px');
+  if (map) map.invalidateSize({ pan: false });
+}
+window.addEventListener('resize', fitScreen);
+window.addEventListener('orientationchange', () => setTimeout(fitScreen, 300));
+
+/* ---------- Map ---------- */
+function initMap() {
+  const v = LS.get('spots.view', { c: [51.1, 10.4], z: 6 });
+  map = L.map('map', { zoomControl: false, attributionControl: false, worldCopyJump: true }).setView(v.c, v.z);
+  L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(map);
+  setStyle(LS.get('spots.style', 'natur'));
+  map.on('moveend', () => { const c = map.getCenter(); LS.set('spots.view', { c: [c.lat, c.lng], z: map.getZoom() }); });
+}
+function treeImage(col) {
+  const s = 32, r = (window.devicePixelRatio || 1) > 1 ? 2 : 1, c = document.createElement('canvas');
+  c.width = c.height = s * r; const g = c.getContext('2d'); g.scale(r, r);
+  for (const [x, y, rad] of [[6, 7, 3.2], [20, 5, 2.6], [27, 17, 3], [13, 19, 3.4], [4, 27, 2.4], [22, 28, 2.2]]) {
+    g.globalAlpha = 0.55; g.fillStyle = col; g.beginPath(); g.arc(x, y, rad, 0, 7); g.fill();
+    g.globalAlpha = 0.35; g.fillStyle = '#ffffff'; g.beginPath(); g.arc(x - rad * 0.35, y - rad * 0.35, rad * 0.4, 0, 7); g.fill();
+  }
+  return { data: g.getImageData(0, 0, s * r, s * r), ratio: r };
+}
+function wireImages(gl) {
+  if (!gl || gl._spotsImg) return; gl._spotsImg = true;
+  gl.on('styleimagemissing', e => {
+    if (!/^trees-[0-9a-f]{6}$/.test(e.id) || gl.hasImage(e.id)) return;
+    const t = treeImage('#' + e.id.slice(6)); gl.addImage(e.id, t.data, { pixelRatio: t.ratio });
+  });
+  /* Waldparkplätze: Parkplätze, die im oder direkt am Wald liegen, bekommen ein grünes P */
+  let sig = '';
+  gl.on('idle', () => {
+    try {
+      const src = gl.getSource('forestpark');
+      if (!src || !gl.getLayer('parking')) return;
+      const out = [], seen = new Set();
+      if (gl.getZoom() >= 14) for (const f of gl.queryRenderedFeatures({ layers: ['parking'] })) {
+        const c = f.geometry && f.geometry.coordinates; if (!c) continue;
+        const k = c[0].toFixed(5) + ',' + c[1].toFixed(5); if (seen.has(k)) continue; seen.add(k);
+        const p = gl.project(c);
+        if (gl.queryRenderedFeatures([[p.x - 14, p.y - 14], [p.x + 14, p.y + 14]], { layers: ['wood'] }).length) out.push({ type: 'Feature', geometry: { type: 'Point', coordinates: c }, properties: {} });
+      }
+      const s = [...out.map(f => f.geometry.coordinates.join())].sort().join('|');
+      if (s !== sig) { sig = s; src.setData({ type: 'FeatureCollection', features: out }); }
+    } catch {}
+  });
+}
+async function loadStyle(k) {
+  if (STYLES[k].pal) return buildStyle(PAL[STYLES[k].pal]);
+  if (!styleCache[k]) {
+    const r = await fetch(OFM + STYLES[k].ofm);
+    if (!r.ok) throw new Error('Kartenstil nicht erreichbar');
+    const st = await r.json();
+    st.layers = (st.layers || []).filter(l => l.type !== 'symbol'); // alle Beschriftungen & Symbole raus
+    styleCache[k] = JSON.stringify(st);
+  }
+  return JSON.parse(styleCache[k]);
+}
+const STYLE_BG = { natur: '#f6f1e4', nacht: '#1e2827', schlicht: '#f5f3f0' };
+async function setStyle(k) {
+  if (!STYLES[k]) k = 'natur';
+  document.body.dataset.mapstyle = k; LS.set('spots.style', k);
+  document.documentElement.style.background = document.body.style.background = STYLE_BG[k];
+  document.body.style.setProperty('--fade', STYLE_BG[k]);
+  const req = ++styleReq;
+  let layer = null;
+  try {
+    if (typeof maplibregl === 'undefined' || !L.maplibreGL) throw new Error('kein MapLibre');
+    const st = await loadStyle(k);
+    if (req !== styleReq) return;
+    layer = L.maplibreGL({ style: st, attribution: ATTR, attributionControl: false });
+    if (tiles) map.removeLayer(tiles);
+    tiles = layer.addTo(map);
+    wireImages(layer.getMaplibreMap && layer.getMaplibreMap());
+  } catch (e) {
+    if (req !== styleReq) return;
+    if (tiles && tiles !== layer) map.removeLayer(tiles);
+    if (layer && map.hasLayer(layer)) map.removeLayer(layer);
+    tiles = L.tileLayer(FALLBACK.url, { maxNativeZoom: 16, maxZoom: 20, attribution: FALLBACK.attr }).addTo(map);
+  }
+}
+function pinIcon(p) {
+  const inner = okPhoto(p.photo) ? `<img src="${p.photo}" alt="">` : esc(initials(p.name));
+  return L.divIcon({ className: 'pin', html: `<div class="pin-b">${inner}</div>`, iconSize: [48, 58], iconAnchor: [24, 58] });
+}
+const sig = p => (p.photo ? p.photo.length + p.photo.slice(-32) : '') + '|' + p.name;
+function upsertMarker(p) {
+  let m = markers.get(p.id);
+  if (!m) {
+    m = L.marker([p.lat, p.lng], { icon: pinIcon(p), title: p.name }).addTo(map);
+    m.on('click', () => showProfile(m._pid));
+    m._pid = p.id; markers.set(p.id, m);
+  } else {
+    m.setLatLng([p.lat, p.lng]);
+    if (m._sig !== sig(p)) m.setIcon(pinIcon(p));
+  }
+  m._sig = sig(p);
+}
+function fitAll() {
+  if (!pins.size) { toast('Noch keine Spots auf der Karte'); return; }
+  const b = L.latLngBounds([...pins.values()].map(p => [p.lat, p.lng]));
+  map.fitBounds(b, { padding: [70, 70], maxZoom: 16 });
+}
+function panAbove(ll) {
+  const sz = map.getSize(), z = map.getZoom();
+  const pt = map.project(ll, z).add([0, sz.y * 0.25]);
+  map.panTo(map.unproject(pt, z), { animate: true });
+}
+function locate() {
+  return new Promise((res, rej) => {
+    if (!navigator.geolocation) return rej(new Error('Standort ist auf diesem Gerät nicht verfügbar.'));
+    navigator.geolocation.getCurrentPosition(
+      p => res([p.coords.latitude, p.coords.longitude]),
+      e => rej(new Error(e.code === 1 ? 'Standortzugriff verweigert – in Einstellungen › Datenschutz › Ortungsdienste erlauben.' : 'Standort konnte nicht ermittelt werden.')),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 });
+  });
+}
+function showMe(ll) {
+  if (!meMarker) meMarker = L.marker(ll, { icon: L.divIcon({ className: '', html: '<div class="me"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }), interactive: false, zIndexOffset: -100 }).addTo(map);
+  else meMarker.setLatLng(ll);
+}
+
+/* ---------- Geocoding (OpenStreetMap Nominatim) ---------- */
+function fmtAddr(j) {
+  const a = (j && j.address) || {};
+  const street = [a.road || a.pedestrian || a.footway || a.path || a.square || a.cycleway, a.house_number].filter(Boolean).join(' ');
+  const city = [a.postcode, a.city || a.town || a.village || a.municipality || a.suburb || a.county].filter(Boolean).join(' ');
+  const first = street || (j && j.name) || '';
+  return [first, city].filter(Boolean).join(', ') || (j && j.display_name) || '';
+}
+async function reverseGeo(lat, lng) {
+  const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=de`);
+  if (!r.ok) throw new Error('Adressdienst nicht erreichbar');
+  return fmtAddr(await r.json());
+}
+async function searchGeo(q) {
+  let u = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=6&accept-language=de&q=${encodeURIComponent(q)}`;
+  if (map.getZoom() >= 8) { const b = map.getBounds(); u += `&viewbox=${b.getWest()},${b.getNorth()},${b.getEast()},${b.getSouth()}`; }
+  const r = await fetch(u);
+  if (!r.ok) throw new Error('Adressdienst nicht erreichbar');
+  const j = await r.json();
+  return Array.isArray(j) ? j.filter(x => isFinite(+x.lat) && isFinite(+x.lon)) : [];
+}
+
+/* ---------- Sheets ---------- */
+function showAdd() {
+  open(`<h2>Spot hinzufügen</h2>
+    <button class="choice" data-act="add-here"><span class="c">${ico('loc')}</span><span>Mein Standort<small>Position des Handys verwenden</small></span></button>
+    <button class="choice" data-act="add-search"><span class="c">${ico('search')}</span><span>Adresse suchen<small>Straße, Ort, PLZ oder alles zusammen</small></span></button>
+    <button class="choice" data-act="add-pick"><span class="c">${ico('map')}</span><span>Auf der Karte wählen<small>Karte verschieben und Nadel setzen</small></span></button>`, 'add');
+}
+function showSearch() {
+  results = [];
+  open(`<form id="sf" class="form"><h2>Adresse suchen</h2>
+    <div class="searchrow"><input id="sq" type="search" placeholder="z. B. Rheinallee 5, Mainz" enterkeyhint="search" autocomplete="off" aria-label="Adresse"><button class="btn primary" type="submit">Suchen</button></div>
+    <div id="sres" style="margin-top:12px"></div></form>`, 'search');
+  setTimeout(() => $('#sq') && $('#sq').focus(), 300);
+}
+async function doSearch() {
+  const q = ($('#sq').value || '').trim(); const box = $('#sres');
+  if (q.length < 2) return;
+  box.innerHTML = '<p class="empty">Suche läuft…</p>';
+  try {
+    results = await searchGeo(q);
+    box.innerHTML = results.length
+      ? results.map((r, i) => `<button type="button" class="item" data-act="res" data-i="${i}"><span class="t"><b>${esc(fmtAddr(r) || r.display_name)}</b><small>${esc(r.display_name)}</small></span></button>`).join('')
+      : '<p class="empty">Nichts gefunden. Probier es mit Ort oder Postleitzahl.</p>';
+  } catch (e) { box.innerHTML = `<p class="empty">${esc(e.message)}</p>`; }
+}
+function newDraft(lat, lng, address = '') {
+  draft = { name: '', desc: '', address, autoAddr: address, lat, lng, photo: '', r: { g: 0, a: 0, u: 0 } };
+  showForm();
+}
+function showForm() {
+  const d = draft;
+  open(`<form id="pf" class="form"><h2>${d.id ? 'Spot bearbeiten' : 'Neuer Spot'}</h2>
+    <label class="photo"><input type="file" accept="image/*" id="photoIn"><span id="photoPrev">${d.photo ? avatar(d) : '<span class="av ph">+</span>'}</span>
+      <span><span class="t">${d.photo ? 'Foto ändern' : 'Profilbild wählen'}</span><br><span class="small">Wird klein auf der Karte gezeigt</span></span></label>
+    ${d.photo ? '<button type="button" class="linkbtn" data-act="rmphoto" style="margin:-8px 0 8px">Foto entfernen</button>' : ''}
+    <label>Name<input id="fName" maxlength="80" value="${esc(d.name)}" placeholder="z. B. Bank am Rheinufer" autocomplete="off"></label>
+    <label>Beschreibung<textarea id="fDesc" maxlength="1000" placeholder="Was macht diesen Ort aus?">${esc(d.desc)}</textarea></label>
+    <div class="addrrow"><label>Adresse<input id="fAddr" maxlength="200" value="${esc(d.address)}" placeholder="Adresse wird ermittelt…" autocomplete="off"></label>
+      <button type="button" class="btn" data-act="readdr" aria-label="Adresse aus Position neu ermitteln">${ico('refresh')}</button></div>
+    <button type="button" class="linkbtn" data-act="move">Position auf der Karte ändern</button>
+    <h3>Bewertung</h3>
+    ${CATS.map(([k, l]) => `<div class="rate"><span>${l}</span><span class="r">${stars(k, d.r[k], true)}<span class="n" id="n-${k}">${d.r[k]}/5</span></span></div>`).join('')}
+    <p class="small mut" style="margin-top:6px">Auf den gewählten Stern nochmal tippen setzt auf 0.</p>
+    <div class="row-btns"><button type="button" class="btn" data-act="cancel">Abbrechen</button><button type="submit" class="btn primary">Speichern</button></div>
+  </form>`, 'form');
+  if (!d.address) autoAddress();
+}
+function syncDraft() {
+  if (!draft || !$('#pf')) return;
+  draft.name = $('#fName').value.trim();
+  draft.desc = $('#fDesc').value.trim();
+  draft.address = $('#fAddr').value.trim();
+}
+function autoAddress() {
+  const d = draft; if (!d) return;
+  const f = $('#fAddr'); if (f) f.placeholder = 'Adresse wird ermittelt…';
+  reverseGeo(d.lat, d.lng).then(a => {
+    if (draft !== d) return;
+    d.autoAddr = a;
+    const f2 = $('#fAddr');
+    if (f2 && (!f2.value.trim() || f2.dataset.auto === '1')) { f2.value = a; f2.dataset.auto = '1'; }
+    d.address = f2 ? f2.value.trim() : a;
+  }).catch(() => { const f3 = $('#fAddr'); if (f3) f3.placeholder = 'Adresse nicht gefunden – selbst eintragen'; });
+}
+function renderStars(k) {
+  const el = $(`#sb .stars[data-for="${k}"]`); if (!el || !draft) return;
+  el.outerHTML = stars(k, draft.r[k], true);
+  $('#n-' + k).textContent = draft.r[k] + '/5';
+}
+function showProfile(id, keepView) {
+  const p = pins.get(id); if (!p) return;
+  if (!keepView) panAbove([p.lat, p.lng]);
+  const r = p.r || {};
+  const when = fmtDate(p.updatedAt) || fmtDate(p.createdAt);
+  open(`<div class="head">${avatar(p)}<div><h2>${esc(p.name)}</h2><p class="addr">${esc(p.address || 'Keine Adresse')}</p></div></div>
+    <div class="score"><b>${clampR(r.g)}</b><div>${stars('g', clampR(r.g))}<small>Gesamt von 5</small></div></div>
+    ${CATS.slice(1).map(([k, l]) => `<div class="rate"><span>${l}</span><span class="r">${stars(k, clampR(r[k]))}<span class="n">${clampR(r[k])}/5</span></span></div>`).join('')}
+    ${p.desc ? `<p class="desc">${esc(p.desc)}</p>` : '<p class="desc mut">Noch keine Beschreibung.</p>'}
+    <button class="btn wide" data-act="fav" data-id="${esc(p.id)}" style="margin-top:4px">${ico('pushpin')} ${p.fav ? 'Aus Favoriten entfernen' : 'Als Favorit anheften'}</button>
+    ${navHtml(p.lat, p.lng, p.name)}
+    <div class="row-btns"><button class="btn danger" data-act="del">Löschen</button><button class="btn primary" data-act="edit">Bearbeiten</button></div>
+    ${when ? `<p class="small mut" style="margin-top:12px">Zuletzt geändert am ${esc(when)}</p>` : ''}`, 'profile');
+  openId = id;
+}
+const LIST_STEP = 10;
+let listLimit = LIST_STEP, listQuery = '';
+function rowHtml(p) {
+  return `<div class="item"><button class="item-main" data-act="open" data-id="${esc(p.id)}">${avatar(p, 's')}<span class="t"><b>${esc(p.name)}</b><small>${esc(p.address || '')}</small></span>${stars('g', clampR(p.r && p.r.g))}</button>
+    <button class="pinbtn${p.fav ? ' on' : ''}" data-act="fav" data-id="${esc(p.id)}" aria-label="${p.fav ? 'Aus Favoriten entfernen' : 'Als Favorit anheften'}" aria-pressed="${p.fav ? 'true' : 'false'}">${ico('pushpin')}</button></div>`;
+}
+function sortedPins() {
+  return [...pins.values()].sort((a, b) => clampR(b.r && b.r.g) - clampR(a.r && a.r.g) || String(a.name).localeCompare(String(b.name), 'de'));
+}
+const favPins = () => [...pins.values()].filter(p => p.fav > 0).sort((a, b) => a.fav - b.fav);
+function filteredPins() {
+  const q = listQuery.trim().toLowerCase();
+  const all = sortedPins();
+  return q ? all.filter(p => (p.name + ' ' + p.address + ' ' + p.desc).toLowerCase().includes(q)) : all;
+}
+function favHtml() {
+  const f = favPins();
+  return f.length ? f.map(rowHtml).join('') : '<p class="hint">Tippe bei einem Spot auf die Nadel, um ihn hier oben anzuheften – bis zu 5 Favoriten.</p>';
+}
+function listBodyHtml() {
+  const arr = filteredPins();
+  if (!pins.size) return '<p class="hint">Noch keine Spots. Tippe unten rechts auf Plus, um den ersten Ort zu setzen.</p>';
+  if (!arr.length) return '<p class="empty">Keine Spots für diese Suche.</p>';
+  const rest = arr.length - listLimit;
+  return arr.slice(0, listLimit).map(rowHtml).join('') +
+    (rest > 0 ? `<button class="btn more" data-act="more">Mehr laden <span class="mut">(${rest} weitere)</span></button>` : '');
+}
+function showList() {
+  listLimit = LIST_STEP;
+  open(`<h2>Spots <span class="mut" id="lcount">${pins.size}</span></h2>
+    <div class="sec" style="margin-top:4px"><h3>Favoriten</h3><span class="mut" id="fcount">${favPins().length}/5</span></div>
+    <div class="favs" id="favBox">${favHtml()}</div>
+    <div class="searchbox">${ico('search')}<input id="lq" type="search" value="${esc(listQuery)}" placeholder="Spots durchsuchen" aria-label="Spots durchsuchen" autocomplete="off"></div>
+    <div class="sec"><h3>Alle Spots</h3></div>
+    <div id="lres">${listBodyHtml()}</div>
+    <div class="sec" style="margin-top:30px"><h3>Vorschläge</h3>
+      <label class="tog"><input type="checkbox" id="sugTog" ${SUG.show ? 'checked' : ''}><span class="sw"></span>Auf Karte</label></div>
+    <div id="sugBox">${sugHtml()}</div>`, 'list');
+  loadSuggestions(false);
+}
+function refreshList() {
+  if (mode !== 'list') return;
+  const y = $('#sheet').scrollTop;
+  const set = (id, html) => { const el = $(id); if (el) el.innerHTML = html; };
+  set('#favBox', favHtml()); set('#lres', listBodyHtml()); set('#sugBox', sugHtml());
+  const c = $('#lcount'); if (c) c.textContent = pins.size;
+  const f = $('#fcount'); if (f) f.textContent = favPins().length + '/5';
+  $('#sheet').scrollTop = y;
+}
+function toggleFav(id) {
+  const p = pins.get(id); if (!p || !fs) return;
+  let v = 0;
+  if (!p.fav) {
+    if (favPins().length >= 5) { toast('Maximal 5 Favoriten – entferne zuerst einen'); return; }
+    v = Date.now();
+  }
+  p.fav = v; // sofort anzeigen, Firestore bestätigt gleich
+  fs.F.updateDoc(fs.F.doc(fs.col, id), { fav: v }).catch(e => toast('Speichern fehlgeschlagen: ' + errHint(e), 6000));
+  if (mode === 'list') refreshList();
+  else if (mode === 'profile' && openId === id) { const y = $('#sheet').scrollTop; showProfile(id, true); $('#sheet').scrollTop = y; }
+  toast(v ? 'Als Favorit angeheftet' : 'Aus Favoriten entfernt');
+}
+
+/* ---------- Navigation & Route ---------- */
+const fmtKm = m => m < 950 ? Math.round(m / 10) * 10 + ' m' : (m / 1000).toFixed(m < 9500 ? 1 : 0).replace('.', ',') + ' km';
+const fmtMin = s => { const m = Math.max(1, Math.round(s / 60)); return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0') + ' min'; };
+const appleNav = (lat, lng, name) => `https://maps.apple.com/?daddr=${lat},${lng}&q=${encodeURIComponent(name || 'Spot')}&dirflg=d`;
+const googleNav = (lat, lng) => `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+function navHtml(lat, lng, name) {
+  return `<div class="sec"><h3>Hinkommen</h3></div>
+    <div class="modes">
+      <button class="btn" data-act="route" data-m="car" data-lat="${lat}" data-lng="${lng}">${ico('car')} Auto</button>
+      <button class="btn" data-act="route" data-m="bike" data-lat="${lat}" data-lng="${lng}">${ico('bike')} Rad</button>
+      <button class="btn" data-act="route" data-m="foot" data-lat="${lat}" data-lng="${lng}">${ico('walk')} Fuß</button>
+    </div>
+    <div class="nav">
+      <a class="btn" href="${appleNav(lat, lng, name)}">${ico('ext')} Apple Karten</a>
+      <a class="btn" href="${googleNav(lat, lng)}">${ico('ext')} Google Maps</a>
+    </div>`;
+}
+let routeLayer = null;
+async function showRoute(lat, lng, m) {
+  toast('Route wird berechnet…', 8000);
+  let me;
+  try { me = await locate(); } catch (e) { toast(e.message, 5000); return; }
+  showMe(me);
+  const prof = { car: 'routed-car', bike: 'routed-bike', foot: 'routed-foot' }[m] || 'routed-car';
+  const path = `/route/v1/driving/${me[1]},${me[0]};${lng},${lat}?overview=full&geometries=geojson`;
+  const urls = ['https://routing.openstreetmap.de/' + prof + path];
+  if (m === 'car') urls.push('https://router.project-osrm.org' + path);
+  let route = null;
+  for (const u of urls) {
+    try {
+      const ac = new AbortController(); const tm = setTimeout(() => ac.abort(), 12000);
+      const r = await fetch(u, { signal: ac.signal }); clearTimeout(tm);
+      const j = await r.json();
+      if (j.code === 'Ok' && j.routes && j.routes[0]) { route = j.routes[0]; break; }
+    } catch {}
+  }
+  if (!route) { toast('Route konnte nicht berechnet werden', 5000); return; }
+  clearRoute();
+  const ll = route.geometry.coordinates.map(c => [c[1], c[0]]);
+  routeLayer = L.layerGroup([
+    L.polyline(ll, { color: '#ffffff', weight: 9, opacity: 0.9, interactive: false }),
+    L.polyline(ll, { color: '#2f6fd6', weight: 5, opacity: 0.95, interactive: false })
+  ]).addTo(map);
+  closeSheet();
+  map.fitBounds(L.latLngBounds(ll), { paddingTopLeft: [40, 110], paddingBottomRight: [90, 150] });
+  const label = { car: 'Auto', bike: 'Fahrrad', foot: 'zu Fuß' }[m] || 'Auto';
+  $('#rtMain').textContent = fmtMin(route.duration) + ' · ' + fmtKm(route.distance);
+  $('#rtSub').textContent = label + ' · ungefähre Route';
+  $('#rtApple').href = appleNav(lat, lng, '');
+  $('#routeBar').classList.add('on');
+  toast('Route berechnet');
+}
+function clearRoute() {
+  if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+  $('#routeBar').classList.remove('on');
+}
+
+/* ---------- Vorschläge (Waldparkplätze, Aussichtspunkte, Hütten …) aus den Kartendaten ---------- */
+const SUG_T = {
+  park: { label: 'Waldparkplatz', icon: '<span>P</span>' },
+  view: { label: 'Aussichtspunkt', icon: 'eye' },
+  hut: { label: 'Schutzhütte', icon: 'hut' },
+  picnic: { label: 'Picknickplatz', icon: 'picnic' }
+};
+const SUG = { items: [], loading: false, err: '', origin: null, originLabel: '', show: LS.get('spots.sugShow', false), layer: null, tj: null, req: 0 };
+const sugIcon = t => { const i = SUG_T[t].icon; return i.startsWith('<') ? i : ico(i); };
+function distM(a, b) {
+  const R = 6371000, toR = Math.PI / 180;
+  const x = (b[1] - a[1]) * toR * Math.cos((a[0] + b[0]) / 2 * toR), y = (b[0] - a[0]) * toR;
+  return Math.sqrt(x * x + y * y) * R;
+}
+function sugHtml() {
+  if (SUG.loading && !SUG.items.length) return '<p class="hint">Suche Waldparkplätze und schöne Orte in der Nähe…</p>';
+  if (SUG.err && !SUG.items.length) return `<p class="hint">${esc(SUG.err)}</p><button class="btn more" data-act="sug-reload">Nochmal versuchen</button>`;
+  if (!SUG.origin) return '<p class="hint">Vorschläge werden geladen, sobald die Karte bereit ist.</p>';
+  const list = SUG.items.filter(s => !nearSaved(s)).slice(0, 12);
+  const head = `<p class="small mut" style="margin:0 0 4px">${esc(SUG.originLabel)}</p>`;
+  if (!list.length) return head + '<p class="hint">Hier in der Nähe nichts Passendes gefunden. Verschiebe die Karte und suche dort.</p><button class="btn more" data-act="sug-here">Im Kartenausschnitt suchen</button>';
+  return head + list.map(s => `<button class="item" data-act="sug" data-i="${SUG.items.indexOf(s)}"><span class="sico">${sugIcon(s.t)}</span><span class="t"><b>${esc(s.name)}</b><small>${esc(SUG_T[s.t].label)}${s.inWood && s.t !== 'park' ? ' · im Wald' : ''}</small></span><span class="dist">${fmtKm(s.d)}</span></button>`).join('') +
+    '<button class="btn more" data-act="sug-here">Im aktuellen Kartenausschnitt suchen</button>';
+}
+const nearSaved = s => [...pins.values()].some(p => distM([p.lat, p.lng], [s.lat, s.lng]) < 80);
+async function sugOrigin(useMap) {
+  if (!useMap) {
+    try {
+      const perm = navigator.permissions && await navigator.permissions.query({ name: 'geolocation' });
+      if (perm && perm.state === 'granted') { const ll = await locate(); return { c: ll, label: 'In der Nähe deines Standorts' }; }
+    } catch {}
+  }
+  const c = map.getCenter();
+  return { c: [c.lat, c.lng], label: 'Rund um den Kartenausschnitt' };
+}
+function ringArea(r) {
+  const kx = 111320 * Math.cos(r[0][1] * Math.PI / 180), ky = 110540; let s = 0;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) s += (r[j][0] * kx) * (r[i][1] * ky) - (r[i][0] * kx) * (r[j][1] * ky);
+  return Math.abs(s / 2);
+}
+function inRing(pt, ring) {
+  let inside = false; const x = pt[0], y = pt[1];
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+    if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+function nearRing(pt, ring, maxM) {
+  const kx = 111320 * Math.cos(pt[1] * Math.PI / 180), ky = 110540;
+  for (let i = 1; i < ring.length; i++) {
+    const ax = (ring[i - 1][0] - pt[0]) * kx, ay = (ring[i - 1][1] - pt[1]) * ky, bx = (ring[i][0] - pt[0]) * kx, by = (ring[i][1] - pt[1]) * ky;
+    const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+    const t = L2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0;
+    const px = ax + t * dx, py = ay + t * dy;
+    if (px * px + py * py < maxM * maxM) return true;
+  }
+  return false;
+}
+async function loadSuggestions(force, useMap) {
+  if (SUG.loading || !map) return;
+  const o = await sugOrigin(useMap);
+  if (!force && SUG.origin && SUG.items.length && distM(SUG.origin, o.c) < 1500) { refreshList(); return; }
+  const req = ++SUG.req;
+  SUG.loading = true; SUG.err = ''; SUG.origin = o.c; SUG.originLabel = o.label; refreshList();
+  try {
+    const [VT, P] = await Promise.all([
+      import('https://cdn.jsdelivr.net/npm/@mapbox/vector-tile@2.0.4/+esm'),
+      import('https://cdn.jsdelivr.net/npm/pbf@4.0.1/+esm')
+    ]);
+    const Pbf = P.default;
+    if (!SUG.tj) SUG.tj = await (await fetch('https://tiles.openfreemap.org/planet')).json();
+    const tpl = SUG.tj.tiles[0], z = 14, n = 2 ** z, [lat, lon] = o.c;
+    const cx = Math.floor((lon + 180) / 360 * n);
+    const cy = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n);
+    const coords = [];
+    for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) coords.push([cx + dx, cy + dy]);
+    const woods = [], pois = [];
+    const take = async ([x, y]) => {
+      try {
+        const r = await fetch(tpl.replace('{z}', z).replace('{x}', x).replace('{y}', y));
+        if (!r.ok) return;
+        const t = new VT.VectorTile(new Pbf(await r.arrayBuffer()));
+        const lc = t.layers.landcover;
+        if (lc) for (let i = 0; i < lc.length; i++) {
+          const f = lc.feature(i); if (f.properties.class !== 'wood') continue;
+          const g = f.toGeoJSON(x, y, z).geometry;
+          const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+          for (const poly of polys) {
+            const ring = poly[0]; if (ringArea(ring) < 50000) continue; // nur echte Wälder ab ~5 ha
+            let a = 180, b = 90, c = -180, d = -90;
+            for (const q of ring) { a = Math.min(a, q[0]); b = Math.min(b, q[1]); c = Math.max(c, q[0]); d = Math.max(d, q[1]); }
+            woods.push({ ring, bb: [a, b, c, d] });
+          }
+        }
+        const pl = t.layers.poi;
+        if (pl) for (let i = 0; i < pl.length; i++) {
+          const f = pl.feature(i), pr = f.properties;
+          const t2 = pr.class === 'parking' ? 'park' : pr.subclass === 'viewpoint' ? 'view' : pr.class === 'shelter' ? 'hut' : (pr.class === 'picnic_site' || pr.subclass === 'picnic_site') ? 'picnic' : '';
+          if (!t2 || f.type !== 1) continue;
+          const g = f.toGeoJSON(x, y, z).geometry;
+          const pt = g.type === 'Point' ? g.coordinates : g.type === 'MultiPoint' ? g.coordinates[0] : null;
+          if (pt) pois.push({ t: t2, pt, name: String(pr.name || pr['name:de'] || '').slice(0, 60) });
+        }
+      } catch {}
+    };
+    for (let i = 0; i < coords.length; i += 8) await Promise.all(coords.slice(i, i + 8).map(take));
+    const near = 0.0025;
+    const inWood = (pt, maxM) => woods.some(w => pt[0] > w.bb[0] - near && pt[0] < w.bb[2] + near && pt[1] > w.bb[1] - near && pt[1] < w.bb[3] + near && (inRing(pt, w.ring) || nearRing(pt, w.ring, maxM)));
+    const out = [];
+    for (const p of pois) {
+      const w = inWood(p.pt, p.t === 'park' ? 80 : 50);
+      if ((p.t === 'park' || p.t === 'hut') && !w) continue;
+      const s = { t: p.t, lat: p.pt[1], lng: p.pt[0], inWood: w, name: p.name || SUG_T[p.t].label };
+      if (out.some(o2 => o2.t === s.t && distM([o2.lat, o2.lng], [s.lat, s.lng]) < (s.t === 'park' ? 250 : 60))) continue;
+      s.d = distM(o.c, [s.lat, s.lng]);
+      out.push(s);
+    }
+    out.sort((a, b) => a.d - b.d);
+    if (req !== SUG.req) return;
+    SUG.items = out.slice(0, 40);
+    if (!woods.length && !pois.length) SUG.err = 'Kartendaten nicht erreichbar.';
+  } catch (e) {
+    if (req === SUG.req) SUG.err = 'Vorschläge konnten nicht geladen werden.';
+  }
+  if (req !== SUG.req) return;
+  SUG.loading = false;
+  refreshList();
+  if (SUG.show) drawSugMarkers();
+}
+function drawSugMarkers() {
+  if (SUG.layer) { map.removeLayer(SUG.layer); SUG.layer = null; }
+  if (!SUG.show) return;
+  SUG.layer = L.layerGroup(SUG.items.filter(s => !nearSaved(s)).map(s => {
+    const m = L.marker([s.lat, s.lng], { icon: L.divIcon({ className: 'pin sugpin', html: `<div class="pin-b">${s.t === 'park' ? 'P' : `<svg viewBox="0 0 24 24">${IC[SUG_T[s.t].icon]}</svg>`}</div>`, iconSize: [38, 46], iconAnchor: [19, 46] }), title: s.name, zIndexOffset: -200 });
+    m.on('click', () => showSug(SUG.items.indexOf(s)));
+    return m;
+  })).addTo(map);
+}
+function showSug(i) {
+  const s = SUG.items[i]; if (!s) return;
+  panAbove([s.lat, s.lng]);
+  open(`<div class="head"><span class="sico" style="width:64px;height:64px;font-size:24px">${sugIcon(s.t)}</span><div><h2>${esc(s.name)}</h2><p class="addr" id="sugAddr">${esc(SUG_T[s.t].label)} · ${fmtKm(s.d)} entfernt</p></div></div>
+    <p class="mut" style="margin-top:12px">Vorschlag aus den Kartendaten${s.inWood ? ', liegt im oder direkt am Wald' : ''}. Gefällt er dir, speichere ihn als eigenen Spot mit Foto und Bewertung.</p>
+    <button class="btn primary wide" data-act="sug-save" data-i="${i}">${ico('plus')} Als Spot speichern</button>
+    ${navHtml(s.lat, s.lng, s.name)}
+    <button class="btn wide" data-act="list" style="margin-top:14px">Zurück zur Liste</button>`, 'sug');
+  reverseGeo(s.lat, s.lng).then(a => { const el = $('#sugAddr'); if (el && a && mode === 'sug') el.textContent = `${SUG_T[s.t].label} · ${fmtKm(s.d)} · ${a}`; s.addr = a; }).catch(() => {});
+}
+function showSettings() {
+  const cur = document.body.dataset.mapstyle;
+  open(`<h2>Einstellungen</h2>
+    <h3 style="margin-top:4px">Kartenstil</h3>
+    <div class="seg">${Object.entries(STYLES).map(([k, s]) => `<button class="btn${cur === k ? ' primary' : ''}" data-act="style" data-v="${k}">${s.name}</button>`).join('')}</div>
+    <h3>Konto</h3>
+    <p class="mut small" style="margin:0 0 4px">Angemeldet als <b>${esc(userEmail || '–')}</b></p>
+    <button class="btn danger wide" data-act="logout">Abmelden</button>
+    <h3>App</h3>
+    <p class="mut small" style="margin:0 0 4px">Version ${esc(APP_VERSION)} · Updates werden automatisch geladen.</p>
+    <button class="btn wide" data-act="checkupdate">Jetzt nach Updates suchen</button>`, 'settings');
+}
+function confirmBox(title, text, yesLabel, act, id) {
+  open(`<h2>${esc(title)}</h2><p class="mut">${esc(text)}</p>
+    <div class="row-btns"><button class="btn" data-act="${id ? 'back' : 'close'}" ${id ? `data-id="${esc(id)}"` : ''}>Abbrechen</button><button class="btn primary" style="background:#e5484d" data-act="${act}" ${id ? `data-id="${esc(id)}"` : ''}>${esc(yesLabel)}</button></div>`, 'confirm');
+}
+
+/* ---------- Placement mode ---------- */
+function startPlacing(done, cancel, at) {
+  $('#sheet').classList.remove('on'); $('#scrim').classList.remove('on');
+  if (at) map.setView(at, Math.max(map.getZoom(), 16));
+  document.body.classList.add('placing');
+  placing = { done, cancel };
+}
+function endPlacing(ok) {
+  const p = placing; placing = null;
+  document.body.classList.remove('placing');
+  if (!p) return;
+  if (ok) { const c = map.getCenter(); p.done(c.lat, c.lng); } else if (p.cancel) p.cancel();
+}
+
+/* ---------- Photos ---------- */
+async function toThumb(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Bild konnte nicht gelesen werden')); i.src = url; });
+    const S = 320, w = img.naturalWidth, h = img.naturalHeight, s = Math.min(w, h);
+    const c = document.createElement('canvas'); c.width = c.height = S;
+    c.getContext('2d').drawImage(img, (w - s) / 2, (h - s) / 2, s, s, 0, 0, S, S);
+    return c.toDataURL('image/jpeg', 0.82);
+  } finally { URL.revokeObjectURL(url); }
+}
+
+/* ---------- Firebase ---------- */
+const errHint = e => (e && e.code === 'permission-denied') ? 'Keine Berechtigung – Firestore-Regeln prüfen.' : ((e && e.message) || 'Unbekannter Fehler');
+function showLogin(msg) {
+  document.body.classList.add('needs-setup');
+  $('#setupErr').textContent = msg || '';
+  setStatus('Abgemeldet');
+}
+function stopSync() {
+  if (unsub) { unsub(); unsub = null; }
+  for (const m of markers.values()) m.remove();
+  markers.clear(); pins.clear(); firstSnap = true;
+}
+function startSync() {
+  if (unsub || !fs) return;
+  setStatus('Lade…');
+  unsub = fs.F.onSnapshot(fs.col, { includeMetadataChanges: true }, onSnap, err => { setStatus('Fehler', 'err'); toast(errHint(err), 6000); });
+  migrateOld();
+}
+/* Spots aus der alten Einzel-Karte (Version mit Zugangsschlüssel) einmalig übernehmen */
+async function migrateOld() {
+  const old = LS.get('spots.cfg', null);
+  if (!old || !old.k || old.k === MAP_ID || LS.get('spots.migrated.' + old.k, false)) return;
+  try {
+    const { F } = fs;
+    const snap = await F.getDocs(F.collection(fs.db, 'karten', old.k, 'pins'));
+    let n = 0;
+    for (const d of snap.docs) { await F.setDoc(F.doc(fs.col, d.id), d.data(), { merge: true }); n++; }
+    LS.set('spots.migrated.' + old.k, true);
+    if (n) toast(`${n} ${n === 1 ? 'Spot' : 'Spots'} in die gemeinsame Karte übernommen`, 4000);
+  } catch (e) { /* alte Karte nicht lesbar – nichts zu tun */ }
+}
+async function connect() {
+  const old = LS.get('spots.cfg', null);
+  const cfg = FIREBASE_CONFIG || (old && old.c);
+  if (!cfg) { showLogin('Die Firebase-Konfiguration fehlt in index.html.'); return; }
+  setStatus('Verbinde…');
+  try {
+    const base = `https://www.gstatic.com/firebasejs/${FB_VER}/`;
+    const [A, F, Au] = await Promise.all([import(base + 'firebase-app.js'), import(base + 'firebase-firestore.js'), import(base + 'firebase-auth.js')]);
+    const app = A.getApps().length ? A.getApp() : A.initializeApp(cfg);
+    const auth = Au.getAuth(app);
+    let db;
+    try { db = F.initializeFirestore(app, { localCache: F.persistentLocalCache() }); } catch { db = F.getFirestore(app); }
+    fs = { F, Au, auth, db, col: F.collection(db, 'karten', MAP_ID, 'pins') };
+    Au.onAuthStateChanged(auth, user => {
+      if (user) { userEmail = user.email || ''; document.body.classList.remove('needs-setup'); startSync(); }
+      else { userEmail = ''; stopSync(); showLogin(); }
+    });
+  } catch (e) {
+    setStatus('Offline', 'err');
+    toast('Verbindung fehlgeschlagen: ' + errHint(e), 6000);
+  }
+}
+async function login() {
+  const err = $('#setupErr'), btn = $('#lgBtn');
+  const email = $('#lgEmail').value.trim(), pw = $('#lgPw').value;
+  if (!email || !pw) { err.textContent = 'Bitte E-Mail und Passwort eingeben.'; return; }
+  if (!fs) { err.textContent = 'Noch keine Verbindung – kurz warten und nochmal versuchen.'; connect(); return; }
+  btn.disabled = true; btn.textContent = 'Anmelden…'; err.textContent = '';
+  try { await fs.Au.signInWithEmailAndPassword(fs.auth, email, pw); $('#lgPw').value = ''; toast('Angemeldet'); }
+  catch (e) {
+    const c = e && e.code || '';
+    err.textContent = /invalid-credential|wrong-password|user-not-found|invalid-email/.test(c) ? 'E-Mail oder Passwort stimmt nicht.'
+      : c.includes('too-many-requests') ? 'Zu viele Versuche – bitte kurz warten.'
+      : c.includes('network') ? 'Keine Internetverbindung.'
+      : c.includes('operation-not-allowed') ? 'E-Mail-Anmeldung ist in Firebase noch nicht aktiviert.'
+      : 'Anmeldung fehlgeschlagen: ' + (e && e.message || c);
+  } finally { btn.disabled = false; btn.textContent = 'Anmelden'; }
+}
+
+/* ---------- Auto-Update ---------- */
+async function checkUpdate(manual) {
+  try {
+    const r = await fetch(location.pathname + '?vcheck=' + Date.now(), { cache: 'no-store' });
+    const m = (await r.text()).match(/name="app-version" content="([^"]+)"/);
+    if (m && m[1] !== APP_VERSION) {
+      let tries = 0; try { tries = +sessionStorage.getItem('spots.upd.' + m[1]) || 0; sessionStorage.setItem('spots.upd.' + m[1], tries + 1); } catch {}
+      if (tries < 2) { updatePending = m[1]; applyUpdate(); return; }
+    }
+    if (manual) toast('Die App ist aktuell');
+  } catch { if (manual) toast('Keine Verbindung'); }
+}
+function applyUpdate() {
+  if (!updatePending || mode === 'form' || placing) return; // nie mitten im Bearbeiten neu laden
+  toast('Neue Version wird geladen…');
+  const v = updatePending; updatePending = null;
+  setTimeout(() => location.replace(location.pathname + '?v=' + encodeURIComponent(v)), 700);
+}
+function onSnap(snap) {
+  const seen = new Set();
+  snap.forEach(d => {
+    const x = d.data() || {};
+    if (!finite(x.lat) || !finite(x.lng)) return;
+    const p = { id: d.id, name: String(x.name || 'Ohne Namen').slice(0, 80), desc: String(x.desc || '').slice(0, 1000), address: String(x.address || '').slice(0, 200), lat: x.lat, lng: x.lng, photo: okPhoto(x.photo) ? x.photo : '', r: x.r || {}, fav: Number(x.fav) || 0, createdAt: x.createdAt, updatedAt: x.updatedAt };
+    seen.add(d.id); pins.set(d.id, p); upsertMarker(p);
+  });
+  for (const id of [...pins.keys()]) if (!seen.has(id)) { pins.delete(id); const m = markers.get(id); if (m) m.remove(); markers.delete(id); }
+  const n = pins.size;
+  setStatus(`${n} ${n === 1 ? 'Spot' : 'Spots'}${snap.metadata.fromCache ? ' · offline' : ''}`, snap.metadata.fromCache ? 'off' : 'ok');
+  if (firstSnap) { firstSnap = false; if (n && !hadView) fitAll(); if (SUG.show) setTimeout(() => loadSuggestions(false), 800); }
+  if (mode === 'profile' && openId) {
+    if (!pins.has(openId)) { closeSheet(); toast('Dieser Spot wurde gelöscht'); }
+    else if (snap.docChanges({ includeMetadataChanges: false }).some(c => c.doc.id === openId)) { const y = $('#sheet').scrollTop; showProfile(openId, true); $('#sheet').scrollTop = y; }
+  }
+  if (mode === 'list') refreshList();
+}
+function savePin() {
+  syncDraft();
+  const d = draft;
+  if (!d) return;
+  if (!d.name) { toast('Bitte gib dem Spot einen Namen'); $('#fName').focus(); return; }
+  if (!fs) { toast('Nicht verbunden'); return; }
+  const { F } = fs;
+  const data = { name: d.name, desc: d.desc, address: d.address, lat: d.lat, lng: d.lng, photo: d.photo || '', r: { g: clampR(d.r.g), a: clampR(d.r.a), u: clampR(d.r.u) }, updatedAt: F.serverTimestamp() };
+  let id = d.id, pr;
+  if (id) pr = F.updateDoc(F.doc(fs.col, id), data);
+  else { const ref = F.doc(fs.col); id = ref.id; data.createdAt = F.serverTimestamp(); pr = F.setDoc(ref, data); }
+  pr.catch(e => toast('Speichern fehlgeschlagen: ' + errHint(e), 6000));
+  closeSheet();
+  setTimeout(() => { if (pins.has(id)) showProfile(id); }, 250);
+}
+function deletePin(id) {
+  if (!fs || !id) return;
+  fs.F.deleteDoc(fs.F.doc(fs.col, id)).catch(e => toast('Löschen fehlgeschlagen: ' + errHint(e), 6000));
+  closeSheet(); toast('Spot gelöscht');
+}
+
+/* ---------- Events ---------- */
+document.addEventListener('click', e => {
+  const st = e.target.closest('[data-star]');
+  if (st && draft) { const k = st.dataset.star, v = +st.dataset.v; draft.r[k] = draft.r[k] === v ? 0 : v; renderStars(k); return; }
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const a = b.dataset.act;
+  if (a === 'close') closeSheet();
+  else if (a === 'add') showAdd();
+  else if (a === 'add-search') showSearch();
+  else if (a === 'add-here') {
+    toast('Standort wird ermittelt…');
+    locate().then(ll => { showMe(ll); map.setView(ll, 17); newDraft(ll[0], ll[1]); }).catch(er => toast(er.message, 5000));
+  }
+  else if (a === 'add-pick') { closeSheet(); startPlacing((lat, lng) => newDraft(lat, lng)); }
+  else if (a === 'place-ok') endPlacing(true);
+  else if (a === 'place-cancel') endPlacing(false);
+  else if (a === 'res') {
+    const r = results[+b.dataset.i]; if (!r) return;
+    const lat = +r.lat, lng = +r.lon;
+    map.setView([lat, lng], 17); newDraft(lat, lng, fmtAddr(r));
+  }
+  else if (a === 'me') locate().then(ll => { showMe(ll); map.flyTo(ll, Math.max(map.getZoom(), 15)); }).catch(er => toast(er.message, 5000));
+  else if (a === 'fit') fitAll();
+  else if (a === 'list') showList();
+  else if (a === 'open') { const p = pins.get(b.dataset.id); if (p) { map.setView([p.lat, p.lng], Math.max(map.getZoom(), 15)); showProfile(p.id); } }
+  else if (a === 'fav') toggleFav(b.dataset.id);
+  else if (a === 'more') { listLimit += LIST_STEP; const el = $('#lres'); if (el) el.innerHTML = listBodyHtml(); }
+  else if (a === 'sug') { const s = SUG.items[+b.dataset.i]; if (s) { map.setView([s.lat, s.lng], Math.max(map.getZoom(), 15)); showSug(+b.dataset.i); } }
+  else if (a === 'sug-here') loadSuggestions(true, true);
+  else if (a === 'sug-reload') loadSuggestions(true);
+  else if (a === 'sug-save') { const s = SUG.items[+b.dataset.i]; if (s) { newDraft(s.lat, s.lng, s.addr || ''); draft.name = s.t === 'park' && s.name === SUG_T.park.label ? 'Waldparkplatz' : s.name; showForm(); } }
+  else if (a === 'route') showRoute(+b.dataset.lat, +b.dataset.lng, b.dataset.m);
+  else if (a === 'route-clear') clearRoute();
+  else if (a === 'settings') showSettings();
+  else if (a === 'style') { setStyle(b.dataset.v); showSettings(); }
+  else if (a === 'logout') confirmBox('Abmelden?', 'Die Spots bleiben gespeichert. Zum erneuten Anmelden brauchst du E-Mail und Passwort.', 'Abmelden', 'logout-yes');
+  else if (a === 'logout-yes') { closeSheet(); if (fs) fs.Au.signOut(fs.auth); }
+  else if (a === 'checkupdate') { toast('Suche nach Updates…'); checkUpdate(true); }
+  else if (a === 'edit') {
+    const p = pins.get(openId); if (!p) return;
+    const id = openId;
+    open('', 'form'); openId = null;
+    draft = { id, name: p.name, desc: p.desc, address: p.address, autoAddr: '', lat: p.lat, lng: p.lng, photo: p.photo, r: { g: clampR(p.r.g), a: clampR(p.r.a), u: clampR(p.r.u) } };
+    showForm();
+  }
+  else if (a === 'del') { const p = pins.get(openId); if (p) confirmBox(`„${p.name}“ löschen?`, 'Der Spot verschwindet auf allen verbundenen Handys. Das lässt sich nicht rückgängig machen.', 'Löschen', 'del-yes', p.id); }
+  else if (a === 'del-yes') deletePin(b.dataset.id);
+  else if (a === 'back') { if (pins.has(b.dataset.id)) showProfile(b.dataset.id, true); else closeSheet(); }
+  else if (a === 'cancel') { const id = draft && draft.id; draft = null; if (id && pins.has(id)) showProfile(id, true); else closeSheet(); }
+  else if (a === 'rmphoto') { syncDraft(); draft.photo = ''; showForm(); }
+  else if (a === 'readdr') { syncDraft(); const f = $('#fAddr'); f.value = ''; f.dataset.auto = '1'; draft.address = ''; autoAddress(); }
+  else if (a === 'move') {
+    syncDraft(); const d = draft;
+    startPlacing((lat, lng) => {
+      draft = d; d.lat = lat; d.lng = lng;
+      const wasAuto = !d.address || d.address === d.autoAddr;
+      if (wasAuto) d.address = '';
+      showForm();
+      if (!wasAuto) toast('Position geändert – Adresse ggf. mit ↻ neu ermitteln', 4000);
+    }, () => { draft = d; showForm(); }, [d.lat, d.lng]);
+  }
+});
+document.addEventListener('submit', e => {
+  e.preventDefault();
+  if (e.target.id === 'pf') savePin();
+  else if (e.target.id === 'sf') doSearch();
+  else if (e.target.id === 'setupForm') login();
+});
+document.addEventListener('change', async e => {
+  if (e.target.id === 'sugTog') {
+    SUG.show = e.target.checked; LS.set('spots.sugShow', SUG.show);
+    if (SUG.show && !SUG.items.length) loadSuggestions(true); else drawSugMarkers();
+    toast(SUG.show ? 'Vorschläge auf der Karte eingeblendet' : 'Vorschläge ausgeblendet');
+    return;
+  }
+  if (e.target.id !== 'photoIn' || !draft) return;
+  const f = e.target.files && e.target.files[0]; if (!f) return;
+  try { syncDraft(); draft.photo = await toThumb(f); showForm(); } catch (er) { toast(er.message); }
+});
+document.addEventListener('input', e => {
+  if (e.target.id === 'lq') {
+    listQuery = e.target.value; listLimit = LIST_STEP;
+    const el = $('#lres'); if (el) el.innerHTML = listBodyHtml();
+  } else if (e.target.id === 'fAddr') e.target.dataset.auto = '0';
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (placing) endPlacing(false); else closeSheet(); } });
+
+/* ---------- Start ---------- */
+for (const el of document.querySelectorAll('[data-ic]')) el.innerHTML = ico(el.dataset.ic);
+if (typeof L === 'undefined') {
+  document.body.innerHTML = '<p style="padding:40px 24px;font:17px/1.5 system-ui">Die Karte konnte nicht geladen werden. Bitte Internetverbindung prüfen und die App neu öffnen.</p>';
+} else {
+  fitScreen();
+  initMap();
+  connect();
+  setTimeout(() => checkUpdate(false), 2500);
+  setInterval(() => checkUpdate(false), 10 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkUpdate(false); });
+}
+}
+</script>
+</body>
+</html>
