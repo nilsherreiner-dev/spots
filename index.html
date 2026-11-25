@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Spots">
-<meta name="app-version" content="2026.11.25-7">
+<meta name="app-version" content="2026.11.25-8">
 <meta name="theme-color" content="#1f3a30">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -102,10 +102,18 @@ input:focus,textarea:focus{border-color:var(--acc)}
 .st{width:24px;height:24px;padding:0;border:0;background:none;color:var(--line);display:inline-grid;place-items:center}
 .st svg{width:100%;height:100%;fill:currentColor}
 .st.on{color:var(--gold)}
+.st .hs{fill:url(#halfStar)}
+.st.half svg{fill:url(#halfStar)}
+.ste{position:relative;display:inline-grid;place-items:center;width:38px;height:38px;padding:4px;color:var(--line)}
+.ste svg{width:100%;height:100%;fill:currentColor;pointer-events:none}
+.ste.on{color:var(--gold)}.ste.half svg{fill:url(#halfStar)}
+.ste button{position:absolute;top:0;bottom:0;width:50%;border:0;background:none;padding:0}
+.ste button:first-child{left:0}.ste button:last-child{right:0}
+.ste button:focus-visible{outline:3px solid var(--acc);outline-offset:-2px;border-radius:8px}
 .form .st{width:42px;height:42px;padding:5px}
 .rate{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--line)}
 .rate>span:first-child{font-weight:500}
-.rate .n{font-variant-numeric:tabular-nums;color:var(--mut);width:2.2em;text-align:right;white-space:nowrap}
+.rate .n{font-variant-numeric:tabular-nums;color:var(--mut);width:2.8em;text-align:right;white-space:nowrap}
 .rate .r{display:flex;align-items:center;gap:6px}
 
 .head{display:flex;gap:16px;align-items:center;margin:6px 44px 4px 0}
@@ -182,6 +190,7 @@ body.needs-setup #setup{display:block}
 </style>
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="halfStar" x1="0" x2="1" y1="0" y2="0"><stop offset="50%" stop-color="#f5b301"/><stop offset="50%" stop-color="#d9d6cf"/></linearGradient></defs></svg>
 <div id="map"></div>
 <div class="topfade"></div>
 
@@ -367,7 +376,7 @@ const LS = {
 };
 const okPhoto = s => typeof s === 'string' && s.length < 400000 && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(s);
 const initials = n => (String(n || '').trim().split(/\s+/).map(w => w[0] || '').join('').slice(0, 2) || '?').toUpperCase();
-const clampR = v => Math.max(0, Math.min(5, Math.round(Number(v) || 0)));
+const clampR = v => Math.max(0, Math.min(10, Math.round(Number(v) || 0)));
 const finite = v => typeof v === 'number' && isFinite(v);
 
 let map, tiles, meMarker = null, fs = null, unsub = null, userEmail = '', updatePending = null;
@@ -397,14 +406,15 @@ function closeSheet() {
   if (updatePending) setTimeout(applyUpdate, 300);
 }
 function stars(key, val, editable) {
-  let h = '';
+  val = clampR(val);
+  let out = '';
   for (let i = 1; i <= 5; i++) {
-    const on = i <= val ? ' on' : '';
-    h += editable
-      ? `<button type="button" class="st${on}" data-star="${key}" data-v="${i}" aria-label="${i} von 5">${STAR}</button>`
-      : `<span class="st${on}">${STAR}</span>`;
+    const cls = val >= 2 * i ? ' on' : val === 2 * i - 1 ? ' half' : '';
+    out += editable
+      ? `<span class="ste${cls}">${STAR}<button type="button" data-star="${key}" data-v="${2 * i - 1}" aria-label="${2 * i - 1} von 10"></button><button type="button" data-star="${key}" data-v="${2 * i}" aria-label="${2 * i} von 10"></button></span>`
+      : `<span class="st${cls}">${STAR}</span>`;
   }
-  return `<span class="stars" data-for="${key}" role="img" aria-label="${val} von 5 Sternen">${h}</span>`;
+  return `<span class="stars" data-for="${key}" role="img" aria-label="${val} von 10">${out}</span>`;
 }
 function avatar(p, cls = '') {
   if (okPhoto(p.photo)) return `<span class="av ${cls}"><img src="${p.photo}" alt=""></span>`;
@@ -605,8 +615,8 @@ function showForm() {
       <button type="button" class="btn" data-act="readdr" aria-label="Adresse aus Position neu ermitteln">${ico('refresh')}</button></div>
     <button type="button" class="linkbtn" data-act="move">Position auf der Karte ändern</button>
     <h3>Bewertung</h3>
-    ${CATS.map(([k, l]) => `<div class="rate"><span>${l}</span><span class="r">${stars(k, d.r[k], true)}<span class="n" id="n-${k}">${d.r[k]}/5</span></span></div>`).join('')}
-    <p class="small mut" style="margin-top:6px">Auf den gewählten Stern nochmal tippen setzt auf 0.</p>
+    ${CATS.map(([k, l]) => `<div class="rate"><span>${l}</span><span class="r">${stars(k, d.r[k], true)}<span class="n" id="n-${k}">${d.r[k]}/10</span></span></div>`).join('')}
+    <p class="small mut" style="margin-top:6px">Linke Sternhälfte = halber Stern. Nochmal auf denselben Wert tippen setzt auf 0.</p>
     <div class="row-btns"><button type="button" class="btn" data-act="cancel">Abbrechen</button><button type="submit" class="btn primary">Speichern</button></div>
   </form>`, 'form');
   if (!d.address) autoAddress();
@@ -631,7 +641,7 @@ function autoAddress() {
 function renderStars(k) {
   const el = $(`#sb .stars[data-for="${k}"]`); if (!el || !draft) return;
   el.outerHTML = stars(k, draft.r[k], true);
-  $('#n-' + k).textContent = draft.r[k] + '/5';
+  $('#n-' + k).textContent = draft.r[k] + '/10';
 }
 function showProfile(id, keepView) {
   const p = pins.get(id); if (!p) return;
@@ -639,8 +649,8 @@ function showProfile(id, keepView) {
   const r = p.r || {};
   const when = fmtDate(p.updatedAt) || fmtDate(p.createdAt);
   open(`<div class="head">${avatar(p)}<div><h2>${esc(p.name)}</h2><p class="addr">${esc(p.address || 'Keine Adresse')}</p></div></div>
-    <div class="score"><b>${clampR(r.g)}</b><div>${stars('g', clampR(r.g))}<small>Gesamt von 5</small></div></div>
-    ${CATS.slice(1).map(([k, l]) => `<div class="rate"><span>${l}</span><span class="r">${stars(k, clampR(r[k]))}<span class="n">${clampR(r[k])}/5</span></span></div>`).join('')}
+    <div class="score"><b>${clampR(r.g)}</b><div>${stars('g', clampR(r.g))}<small>Gesamt von 10</small></div></div>
+    ${CATS.slice(1).map(([k, l]) => `<div class="rate"><span>${l}</span><span class="r">${stars(k, clampR(r[k]))}<span class="n">${clampR(r[k])}/10</span></span></div>`).join('')}
     ${p.desc ? `<p class="desc">${esc(p.desc)}</p>` : '<p class="desc mut">Noch keine Beschreibung.</p>'}
     <button class="btn wide" data-act="fav" data-id="${esc(p.id)}" style="margin-top:4px">${ico('pushpin')} ${p.fav ? 'Aus Favoriten entfernen' : 'Als Favorit anheften'}</button>
     ${navHtml(p.lat, p.lng, p.name)}
@@ -1053,7 +1063,7 @@ function onSnap(snap) {
   snap.forEach(d => {
     const x = d.data() || {};
     if (!finite(x.lat) || !finite(x.lng)) return;
-    const p = { id: d.id, name: String(x.name || 'Ohne Namen').slice(0, 80), desc: String(x.desc || '').slice(0, 1000), address: String(x.address || '').slice(0, 200), lat: x.lat, lng: x.lng, photo: okPhoto(x.photo) ? x.photo : '', r: x.r || {}, fav: Number(x.fav) || 0, createdAt: x.createdAt, updatedAt: x.updatedAt };
+    const p = { id: d.id, name: String(x.name || 'Ohne Namen').slice(0, 80), desc: String(x.desc || '').slice(0, 1000), address: String(x.address || '').slice(0, 200), lat: x.lat, lng: x.lng, photo: okPhoto(x.photo) ? x.photo : '', r: (() => { const rr = x.r || {}, sc = x.rs === 10 ? 1 : 2; return { g: clampR((Number(rr.g) || 0) * sc), a: clampR((Number(rr.a) || 0) * sc), u: clampR((Number(rr.u) || 0) * sc) }; })(), fav: Number(x.fav) || 0, createdAt: x.createdAt, updatedAt: x.updatedAt };
     seen.add(d.id); pins.set(d.id, p); upsertMarker(p);
   });
   for (const id of [...pins.keys()]) if (!seen.has(id)) { pins.delete(id); const m = markers.get(id); if (m) m.remove(); markers.delete(id); }
@@ -1073,7 +1083,7 @@ function savePin() {
   if (!d.name) { toast('Bitte gib dem Spot einen Namen'); $('#fName').focus(); return; }
   if (!fs) { toast('Nicht verbunden'); return; }
   const { F } = fs;
-  const data = { name: d.name, desc: d.desc, address: d.address, lat: d.lat, lng: d.lng, photo: d.photo || '', r: { g: clampR(d.r.g), a: clampR(d.r.a), u: clampR(d.r.u) }, updatedAt: F.serverTimestamp() };
+  const data = { name: d.name, desc: d.desc, address: d.address, lat: d.lat, lng: d.lng, photo: d.photo || '', r: { g: clampR(d.r.g), a: clampR(d.r.a), u: clampR(d.r.u) }, rs: 10, updatedAt: F.serverTimestamp() };
   let id = d.id, pr;
   if (id) pr = F.updateDoc(F.doc(fs.col, id), data);
   else { const ref = F.doc(fs.col); id = ref.id; data.createdAt = F.serverTimestamp(); pr = F.setDoc(ref, data); }
