@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Spots">
-<meta name="app-version" content="2026.11.25-9">
+<meta name="app-version" content="2026.11.25-10">
 <meta name="theme-color" content="#1f3a30">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -776,11 +776,13 @@ function toggleFav(id) {
     if (favPins().length >= 5) { toast('Maximal 5 Favoriten – entferne zuerst einen'); return; }
     v = Date.now();
   }
-  p.fav = v; // sofort anzeigen, Firestore bestätigt gleich
-  fs.F.updateDoc(fs.F.doc(fs.col, id), { fav: v }).catch(e => toast('Speichern fehlgeschlagen: ' + errHint(e), 6000));
+  const before = p.fav;
+  p.fav = v; // sofort anzeigen …
+  fs.F.updateDoc(fs.F.doc(fs.col, id), { fav: v })
+    .then(() => toast(v ? 'Favorit gespeichert' : 'Favorit entfernt'))   // … und erst bestätigen, wenn der Server es hat
+    .catch(e => { p.fav = before; if (mode === 'list') refreshList(); toast('Favorit nicht gespeichert: ' + errHint(e), 7000); });
   if (mode === 'list') refreshList();
   else if (mode === 'profile' && openId === id) { const y = $('#sheet').scrollTop; showProfile(id, true); $('#sheet').scrollTop = y; }
-  toast(v ? 'Als Favorit angeheftet' : 'Aus Favoriten entfernt');
 }
 
 /* ---------- Navigation & Route ---------- */
@@ -1048,20 +1050,6 @@ function startSync() {
   if (unsub || !fs) return;
   setStatus('Lade…');
   unsub = fs.F.onSnapshot(fs.col, { includeMetadataChanges: true }, onSnap, err => { setStatus('Fehler', 'err'); toast(errHint(err), 6000); });
-  migrateOld();
-}
-/* Spots aus der alten Einzel-Karte (Version mit Zugangsschlüssel) einmalig übernehmen */
-async function migrateOld() {
-  const old = LS.get('spots.cfg', null);
-  if (!old || !old.k || old.k === MAP_ID || LS.get('spots.migrated.' + old.k, false)) return;
-  try {
-    const { F } = fs;
-    const snap = await F.getDocs(F.collection(fs.db, 'karten', old.k, 'pins'));
-    let n = 0;
-    for (const d of snap.docs) { await F.setDoc(F.doc(fs.col, d.id), d.data(), { merge: true }); n++; }
-    LS.set('spots.migrated.' + old.k, true);
-    if (n) toast(`${n} ${n === 1 ? 'Spot' : 'Spots'} in die gemeinsame Karte übernommen`, 4000);
-  } catch (e) { /* alte Karte nicht lesbar – nichts zu tun */ }
 }
 async function connect() {
   const old = LS.get('spots.cfg', null);
@@ -1130,7 +1118,8 @@ function onSnap(snap) {
   });
   for (const id of [...pins.keys()]) if (!seen.has(id)) { pins.delete(id); const m = markers.get(id); if (m) m.remove(); markers.delete(id); }
   const n = pins.size;
-  setStatus(`${n} ${n === 1 ? 'Spot' : 'Spots'}${snap.metadata.fromCache ? ' · offline' : ''}`, snap.metadata.fromCache ? 'off' : 'ok');
+  const pend = snap.metadata.hasPendingWrites, off = snap.metadata.fromCache;
+  setStatus(`${n} ${n === 1 ? 'Spot' : 'Spots'}${off ? ' · offline' : pend ? ' · speichert…' : ''}`, off || pend ? 'off' : 'ok');
   if (firstSnap) { firstSnap = false; if (n && !hadView) fitAll(); if (SUG.show) setTimeout(() => loadSuggestions(false), 800); }
   if (mode === 'profile' && openId) {
     if (!pins.has(openId)) { closeSheet(); toast('Dieser Spot wurde gelöscht'); }
